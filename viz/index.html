@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OraclePageIndex - Knowledge Graph</title>
+    <link rel="stylesheet" href="/viz/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header id="header">
+        <div class="header-title">
+            <h1>OraclePageIndex</h1>
+            <span class="subtitle">Oracle AI Database Knowledge Graph</span>
+        </div>
+        <div class="header-controls">
+            <input type="text" id="search-input" placeholder="Search nodes..." autocomplete="off">
+            <select id="layout-toggle">
+                <option value="force">Force Layout</option>
+                <option value="tree">Tree Layout</option>
+            </select>
+            <button id="reset-btn">Reset</button>
+        </div>
+    </header>
+
+    <!-- Legend -->
+    <div id="legend">
+        <div class="legend-item">
+            <span class="legend-dot" style="background: #58a6ff;"></span>
+            <span class="legend-label">Document</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-dot" style="background: #3fb950;"></span>
+            <span class="legend-label">Section</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-dot" style="background: #d29922;"></span>
+            <span class="legend-label">Entity</span>
+        </div>
+    </div>
+
+    <!-- Graph Container -->
+    <svg id="graph-svg"></svg>
+
+    <!-- Details Panel -->
+    <aside id="details-panel" class="hidden">
+        <button id="details-close" aria-label="Close details">&times;</button>
+        <h2 id="detail-label"></h2>
+        <div class="detail-row">
+            <span class="detail-key">Type</span>
+            <span id="detail-type" class="detail-value badge"></span>
+        </div>
+        <div class="detail-row" id="detail-entity-type-row" style="display:none;">
+            <span class="detail-key">Entity Type</span>
+            <span id="detail-entity-type" class="detail-value"></span>
+        </div>
+        <div class="detail-row" id="detail-node-id-row" style="display:none;">
+            <span class="detail-key">Node ID</span>
+            <span id="detail-node-id" class="detail-value mono"></span>
+        </div>
+        <div class="detail-section" id="detail-summary-section" style="display:none;">
+            <h3>Summary</h3>
+            <p id="detail-summary"></p>
+        </div>
+        <div class="detail-section" id="detail-description-section" style="display:none;">
+            <h3>Description</h3>
+            <p id="detail-description"></p>
+        </div>
+        <div class="detail-section" id="detail-connections-section">
+            <h3>Connections</h3>
+            <ul id="detail-connections"></ul>
+        </div>
+    </aside>
+
+    <!-- Stats bar -->
+    <div id="stats-bar">
+        <span id="stats-text"></span>
+    </div>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="/viz/graph.js"></script>
+</body>
+</html>
