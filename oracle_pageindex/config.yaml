@@ -1,0 +1,22 @@
+# Ollama LLM configuration
+ollama:
+  base_url: "http://localhost:11434"
+  model: "llama3.1"
+  temperature: 0
+
+# Oracle Database configuration
+oracle:
+  user: "pageindex"
+  password: "pageindex"
+  dsn: "localhost:1521/FREEPDB1"
+  pool_min: 1
+  pool_max: 5
+
+# PageIndex configuration (kept from original)
+toc_check_page_num: 20
+max_page_num_each_node: 10
+max_token_num_each_node: 20000
+if_add_node_id: "yes"
+if_add_node_summary: "yes"
+if_add_doc_description: "no"
+if_add_node_text: "no"

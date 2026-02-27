@@ -13,3 +13,8 @@ log/*
 logs/
 parts/*
 json_results/*
+docs/plans/
+
+# OraclePageIndex
+results/
+*.pyc
