@@ -1,7 +1,7 @@
 # Ollama LLM configuration
 ollama:
   base_url: "http://localhost:11434"
-  model: "llama3.1"
+  model: "gemma3"
   temperature: 0
 
 # Oracle Database configuration

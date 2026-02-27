@@ -177,29 +177,38 @@ class GraphStore:
         return self.db.fetchall("SELECT * FROM entities ORDER BY entity_id")
 
     def get_entity_sections(self, entity_name):
-        """Return all sections that mention an entity (by entity name), with document info."""
+        """Return all sections that mention an entity (by entity name), with document info.
+
+        Uses case-insensitive matching with LIKE for better recall.
+        """
         sql = """
-            SELECT s.section_id, s.title, s.depth_level, se.relevance,
+            SELECT s.section_id, s.title, s.summary, s.text_content,
+                   s.depth_level, se.relevance, s.start_index,
                    d.doc_id, d.doc_name
             FROM sections s
             JOIN section_entities se ON se.section_id = s.section_id
             JOIN entities e ON e.entity_id = se.entity_id
             JOIN documents d ON d.doc_id = s.doc_id
-            WHERE e.name = :entity_name
-            ORDER BY d.doc_name, s.start_index
+            WHERE LOWER(e.name) LIKE '%' || LOWER(:entity_name) || '%'
+              AND ROWNUM <= 10
+            ORDER BY s.start_index
         """
         return self.db.fetchall(sql, {"entity_name": entity_name})
 
     def get_related_entities(self, entity_name):
-        """Return entities related to the given entity (by name)."""
+        """Return entities related to the given entity (by name).
+
+        Uses case-insensitive matching with LIKE for better recall.
+        """
         sql = """
             SELECT e2.entity_id, e2.name, e2.entity_type, e2.description,
                    er.relationship
             FROM entities e1
             JOIN entity_relationships er ON er.source_entity = e1.entity_id
             JOIN entities e2 ON e2.entity_id = er.target_entity
-            WHERE e1.name = :entity_name
+            WHERE LOWER(e1.name) LIKE '%' || LOWER(:entity_name) || '%'
             ORDER BY e2.name
+            FETCH FIRST 20 ROWS ONLY
         """
         return self.db.fetchall(sql, {"entity_name": entity_name})
 

@@ -11,7 +11,6 @@ All subcommands accept optional ``--model`` and ``--oracle-dsn`` overrides.
 """
 
 import argparse
-import asyncio
 import logging
 import sys
 
@@ -74,7 +73,7 @@ def cmd_index(args):
     )
     try:
         indexer = Indexer(llm=llm, db=db, opt=cfg)
-        stats = asyncio.run(indexer.index_pdf(args.file))
+        stats = indexer.index_pdf(args.file)
         print("Indexing complete.")
         print(f"  Document:      {stats.get('doc_name', 'N/A')}")
         print(f"  Sections:      {stats.get('sections', 0)}")
@@ -102,7 +101,7 @@ def cmd_query(args):
     try:
         graph = GraphStore(db)
         engine = QueryEngine(llm=llm, graph=graph)
-        result = asyncio.run(engine.query(args.question))
+        result = engine.query(args.question)
 
         print("\nAnswer:")
         print(result.get("answer", "No answer returned."))

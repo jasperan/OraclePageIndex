@@ -2,40 +2,166 @@
 
 # OraclePageIndex
 
-### Document Intelligence with Oracle AI Database Property Graphs
+### Document Intelligence Powered by Oracle AI Database Property Graphs
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Oracle 26ai](https://img.shields.io/badge/Oracle-26ai_Free-red.svg)](https://www.oracle.com/database/free/)
 [![Ollama](https://img.shields.io/badge/LLM-Ollama-green.svg)](https://ollama.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Transform documents into navigable knowledge graphs stored in Oracle Database using SQL Property Graphs.**
-**Graph-based reasoning, not vectors.**
+**Transform PDFs into navigable knowledge graphs using Oracle SQL Property Graphs.**
+**Graph-based reasoning. No vectors. No embeddings.**
+
+[Quick Start](#quick-start) | [How It Works](#how-it-works) | [Live Demo](#live-demo-apple-10-k-2024) | [SQL/PGQ Examples](#sqlpgq--the-power-of-oracle-property-graphs)
 
 </div>
 
 ---
 
-OraclePageIndex is an Oracle AI Database-powered fork of [PageIndex](https://github.com/VectifyAI/PageIndex) by VectifyAI. Instead of relying on vector similarity search, it builds a **property graph** of documents, sections, entities, and their relationships directly inside Oracle Database 26ai Free. Queries traverse the graph using **SQL/PGQ** (SQL Property Graph Queries) and are augmented by an LLM (Ollama) for natural-language answers. The result is explainable, traceable, and structurally aware document intelligence -- no embeddings required.
+## What Is This?
 
----
+OraclePageIndex turns documents into **knowledge graphs** stored natively in Oracle Database using **SQL Property Graphs** (SQL/PGQ). Unlike traditional RAG systems that chunk text and match vectors, OraclePageIndex builds a structured graph of documents, sections, entities, and relationships -- then traverses it with standard SQL to find answers.
 
-## Why Oracle Property Graphs?
+It's an Oracle AI Database-powered fork of [PageIndex](https://github.com/VectifyAI/PageIndex) by VectifyAI, demonstrating that **Oracle Database's graph capabilities** are a powerful alternative to vector search for document intelligence.
 
-| | Traditional RAG | OraclePageIndex |
+### Why Graphs Instead of Vectors?
+
+| | Vector RAG | OraclePageIndex (Graph RAG) |
 |---|---|---|
+| **How it works** | Chunk text → embed → cosine similarity | Parse structure → extract entities → graph traversal |
 | **Storage** | Vector embeddings in a vector DB | Property graph in Oracle Database |
-| **Retrieval** | Cosine similarity on chunks | Graph traversal via SQL/PGQ |
-| **Reasoning** | Semantic similarity (approximate) | Structural + relational reasoning (exact) |
-| **Explainability** | Opaque distance scores | Named edges, traversable paths |
-| **Relationships** | Lost during chunking | First-class citizens (edges) |
-| **Query Language** | Proprietary APIs | Standard SQL with GRAPH_TABLE |
-| **Schema** | Flat key-value | Rich vertex/edge types with properties |
-| **Multi-hop** | Requires re-ranking hacks | Native graph path expressions |
+| **Retrieval** | Approximate nearest-neighbor search | Exact graph traversal via SQL/PGQ |
+| **Relationships** | Lost during chunking | First-class citizens (named edges) |
+| **Explainability** | Opaque similarity scores | Traceable graph paths with named relationships |
+| **Multi-document** | Separate vector spaces per doc | Unified knowledge graph with cross-document links |
+| **Query Language** | Proprietary APIs | Standard SQL with `GRAPH_TABLE` |
+| **Multi-hop reasoning** | Requires re-ranking hacks | Native recursive path expressions (`->+`) |
 
 ---
 
-## Architecture
+## Live Demo: Apple 10-K 2024
+
+We indexed Apple's 121-page annual report (SEC 10-K filing, fiscal year 2024) end-to-end. Here's what Oracle's property graph captured:
+
+### Graph Statistics
+
+| Metric | Count |
+|--------|-------|
+| **Document** | 1 (Apple 10-K 2024) |
+| **Sections** | 121 page-level sections with summaries |
+| **Entities** | 686 unique entities extracted via LLM |
+| **Mention Edges** | 951 section-entity connections |
+| **Entity Relationships** | 33 cross-entity links |
+| **D3.js Graph** | 808 nodes, 1,105 edges |
+
+### Entity Types Extracted
+
+The LLM extracted structured entities across categories:
+
+- **Organizations**: Apple Inc., SEC, Standard & Poor's, Bank of New York Mellon
+- **Products**: iPhone 16 Pro, iPhone 16, iPhone SE, Apple Watch Series 10, Mac
+- **Technologies**: iOS, macOS, Apple Intelligence, XBRL
+- **People**: Timothy D. Cook, Luca Maestri, Arthur D. Levinson, board members
+- **Locations**: China mainland, India, Japan, South Korea, Taiwan, Vietnam
+- **Concepts**: Risk Factors, Cybersecurity, Human Capital, Net Sales, Tariffs
+- **Financial**: Common Stock, Equity Awards, RSUs, Commercial Paper, Term Debt
+
+### Sample SQL/PGQ Query: Apple's Relationships
+
+```sql
+SELECT e2.name, e2.entity_type, r.relationship
+FROM GRAPH_TABLE (doc_knowledge_graph
+    MATCH (e1 IS entity WHERE e1.name = 'Apple Inc.')
+          -[r IS related_to]-> (e2 IS entity)
+    COLUMNS (e2.name, e2.entity_type, r.relationship)
+);
+```
+
+**Result:**
+
+| Entity | Type | Relationship |
+|--------|------|-------------|
+| Form 10-K | CONCEPT | USED_BY |
+| SEC | ORGANIZATION | RELATED_TO |
+| Securities Exchange Act of 1934 | LAW | RELATED_TO |
+| Net Sales | METRIC | RELATED_TO |
+| Product Introductions | CONCEPT | RELATED_TO |
+| Human Capital | CONCEPT | RELATED_TO |
+| China mainland | LOCATION | OPERATES_IN |
+| India | LOCATION | OPERATES_IN |
+| Japan | LOCATION | OPERATES_IN |
+| South Korea | LOCATION | OPERATES_IN |
+| Taiwan | LOCATION | OPERATES_IN |
+| Vietnam | LOCATION | OPERATES_IN |
+
+### Sample Query & Answer
+
+```bash
+$ python run.py query "What are the main risk factors for Apple?"
+```
+
+> **Answer:** Based on the knowledge graph, Apple's main risk factors include:
+> - **Supply Chain Risks**: Heavy reliance on manufacturing in China, South Korea, Taiwan, India, and Vietnam
+> - **Financial Risks**: Commercial paper interest rate exposure, term debt obligations, currency exchange fluctuations
+> - **Product Risks**: Dependence on successful product introductions; component shortages
+> - **Legal & Regulatory**: Subject to Securities Exchange Act; SEC reporting requirements
+>
+> **Sources:** Pages 3, 9, 11, 27, 45, 76, 81, 98, 99, 108, 110, 121
+>
+> **Related Entities:** Apple Inc., China mainland, India, Japan, South Korea, Taiwan, Vietnam, Net Sales, Product Introductions, Tariffs, SEC
+
+---
+
+## How It Works
+
+### Indexing Pipeline
+
+```
+  PDF Document
+       |
+       v
+  [1. Parse]  Extract text per page, detect structure
+       |
+       v
+  [2. Structure]  Ollama builds hierarchical section tree
+       |
+       v
+  [3. Summarize]  Generate concise summary per section
+       |
+       v
+  [4. Extract Entities]  Ollama identifies PERSON, ORG, TECH, CONCEPT...
+       |
+       v
+  [5. Store in Oracle]  INSERT vertices + edges into Property Graph
+       |
+       v
+  [6. Link Entities]  Ollama discovers cross-entity relationships
+
+  Result: A rich Oracle Property Graph with SQL/PGQ access
+```
+
+### Query Pipeline
+
+```
+  User Question: "What products does Apple sell?"
+       |
+       v
+  [1. Concept Extraction]  Ollama extracts: ["Apple", "products"]
+       |
+       v
+  [2. Graph Traversal]  SQL/PGQ finds matching entities + sections
+       |
+       v
+  [3. Context Assembly]  Retrieve text from graph-matched sections
+       |
+       v
+  [4. LLM Reasoning]  Ollama reasons over graph-retrieved context
+       |
+       v
+  Answer with sources and related entities from the graph
+```
+
+### Architecture
 
 ```
                          OraclePageIndex Architecture
@@ -65,162 +191,204 @@ OraclePageIndex is an Oracle AI Database-powered fork of [PageIndex](https://git
                       +----------------+
 ```
 
-```
-PDF --> Parser --> Ollama LLM --> Entities & Sections
-                                        |
-                                        v
-                              Oracle Property Graph
-                              (SQL/PGQ GRAPH_TABLE)
-                                        |
-                            +-----------+-----------+
-                            |                       |
-                            v                       v
-                     Query Engine              D3.js Graph
-                   (Ollama + SQL/PGQ)        Visualization
-```
-
 ---
 
 ## Quick Start
 
 ### Prerequisites
 
-- **Docker** (for Oracle Database)
+- **Docker** (for Oracle Database 26ai Free)
 - **Python 3.11+**
-- **Ollama** with a model pulled (e.g. `ollama pull llama3.1`)
+- **Ollama** with a model pulled (e.g., `ollama pull gemma3` or `ollama pull llama3.1`)
 
 ### 1. Start Oracle Database
 
 ```bash
 docker compose up -d
-# Wait ~2 minutes for the database to initialize
+# Wait ~2 minutes for initialization
 docker compose logs -f oracle-db  # watch until "DATABASE IS READY TO USE"
 ```
 
 ### 2. Create the Database User
 
-Connect as SYSDBA and create the `pageindex` user:
-
-```sql
-sqlplus sys/OraclePageIndex123@localhost:1521/FREEPDB1 as sysdba
-
-CREATE USER pageindex IDENTIFIED BY pageindex
-    DEFAULT TABLESPACE users
-    TEMPORARY TABLESPACE temp
-    QUOTA UNLIMITED ON users;
-
+```bash
+# Connect as SYSDBA (replace password with yours from docker-compose.yml)
+docker exec -i <container-name> sqlplus -s "/ as sysdba" <<'EOF'
+ALTER SESSION SET CONTAINER = FREEPDB1;
+ALTER PROFILE DEFAULT LIMIT PASSWORD_VERIFY_FUNCTION NULL;
+CREATE USER pageindex IDENTIFIED BY pageindex;
 GRANT CONNECT, RESOURCE TO pageindex;
-GRANT CREATE SESSION TO pageindex;
-GRANT CREATE TABLE TO pageindex;
+GRANT UNLIMITED TABLESPACE TO pageindex;
 GRANT CREATE PROPERTY GRAPH TO pageindex;
-
 EXIT;
+EOF
 ```
+
+The key grant is `CREATE PROPERTY GRAPH` -- this enables Oracle's SQL/PGQ capabilities.
 
 ### 3. Install & Initialize
 
 ```bash
-# Clone and install
-git clone https://github.com/jasperan/OraclePageIndex.git
-cd OraclePageIndex
-cp .env.example .env  # edit if needed
-pip install -e .
+pip install oracledb httpx pyyaml tiktoken PyPDF2 PyMuPDF fastapi uvicorn
 
-# Initialize the schema (creates tables + property graph)
-oracle-pageindex init
+# Initialize the schema (creates 6 tables + Property Graph)
+python run.py init
 ```
+
+This creates the Oracle Property Graph `doc_knowledge_graph` with:
+- **3 vertex tables**: `documents`, `sections`, `entities`
+- **3 edge tables**: `section_hierarchy`, `section_entities`, `entity_relationships`
 
 ### 4. Index a Document
 
 ```bash
-oracle-pageindex index /path/to/document.pdf
+python run.py index /path/to/document.pdf
 ```
 
-The indexer will:
-1. Parse the PDF into a hierarchical section tree
-2. Extract named entities from each section via Ollama
-3. Store everything as vertices and edges in the Oracle Property Graph
+Example output:
+```
+Indexing complete.
+  Document:      apple-10k-2024.pdf
+  Sections:      121
+  Entities:      686
+  Relationships: 33
+```
 
 ### 5. Query the Knowledge Graph
 
 ```bash
-oracle-pageindex query "What are the key financial risks mentioned in section 3?"
+python run.py query "What are the key financial risks?"
 ```
 
-The query engine traverses the graph using SQL/PGQ, gathers relevant sections and entities, and feeds them to Ollama for a grounded, citation-backed answer.
+The query engine:
+1. Extracts concepts from your question via Ollama
+2. Traverses the Oracle Property Graph to find matching sections
+3. Enriches context with related entities
+4. Reasons over the graph-retrieved context for a grounded answer
 
 ### 6. Visualize
 
 ```bash
-oracle-pageindex serve
-# Open http://localhost:8000 in your browser
+python run.py serve
+# Open http://localhost:8000
 ```
 
-An interactive D3.js force-directed graph renders your document's knowledge graph -- sections, entities, and relationships -- all queryable and explorable.
+Interactive D3.js force-directed graph with:
+- **Color-coded nodes**: Documents (blue), Sections (green), Entities (orange)
+- **Edge types**: Hierarchy (solid), Mentions (dashed), Relationships (dotted)
+- **Click** any node for details, **search** for entities, **toggle** layouts
 
 ---
 
-## SQL/PGQ Examples
+## SQL/PGQ -- The Power of Oracle Property Graphs
 
-OraclePageIndex stores documents as a native SQL Property Graph. You can query it directly with standard SQL using `GRAPH_TABLE`:
+The entire knowledge graph is queryable with standard SQL using `GRAPH_TABLE`. This is what makes Oracle special -- no proprietary graph query language, just SQL.
 
-**Find all entities mentioned in a specific section:**
+### Find Sections Mentioning an Entity
 
 ```sql
-SELECT entity_name, entity_type, section_title
+SELECT s.title, e.name AS entity, d.doc_name
 FROM GRAPH_TABLE (doc_knowledge_graph
-    MATCH (s IS section) -[m IS mentions]-> (e IS entity)
-    WHERE s.title = 'Financial Stability'
-    COLUMNS (
-        e.name AS entity_name,
-        e.entity_type AS entity_type,
-        s.title AS section_title
-    )
+    MATCH (e IS entity WHERE e.name = 'iPhone')
+          <-[m IS mentions]- (s IS section)
+    COLUMNS (s.title, e.name, s.doc_id)
+) gt
+JOIN documents d ON d.doc_id = gt.doc_id;
+```
+
+### Discover Entity Relationships
+
+```sql
+SELECT e1.name AS source, r.relationship, e2.name AS target, e2.entity_type
+FROM GRAPH_TABLE (doc_knowledge_graph
+    MATCH (e1 IS entity WHERE e1.name = 'Apple Inc.')
+          -[r IS related_to]-> (e2 IS entity)
+    COLUMNS (e1.name, r.relationship, e2.name, e2.entity_type)
 );
 ```
 
-**Discover multi-hop entity relationships:**
+### Recursive Section Hierarchy Traversal
 
 ```sql
-SELECT src_name, relationship, tgt_name
+-- Find ALL descendants of a section (multi-hop!)
+SELECT child.title, child.summary
 FROM GRAPH_TABLE (doc_knowledge_graph
-    MATCH (e1 IS entity) -[r IS related_to]-> (e2 IS entity)
-    COLUMNS (
-        e1.name AS src_name,
-        r.relationship AS relationship,
-        e2.name AS tgt_name
-    )
+    MATCH (parent IS section WHERE parent.title = 'Introduction')
+          -[h IS parent_of]->+ (child IS section)
+    COLUMNS (child.title, child.summary)
 );
 ```
 
-**Traverse section hierarchy (parent to children):**
+The `->+` syntax is SQL/PGQ's recursive path expression -- it traverses the hierarchy to any depth in a single query. No recursive CTEs needed.
+
+### Cross-Document Entity Discovery
 
 ```sql
-SELECT parent_title, child_title, child_summary
+-- Find all documents and sections that discuss a concept
+SELECT d.doc_name, s.title, m.relevance, e.entity_type
 FROM GRAPH_TABLE (doc_knowledge_graph
-    MATCH (p IS section) -[h IS parent_of]-> (c IS section)
-    COLUMNS (
-        p.title AS parent_title,
-        c.title AS child_title,
-        c.summary AS child_summary
-    )
-)
-ORDER BY parent_title;
+    MATCH (e IS entity WHERE e.name = 'Cybersecurity')
+          <-[m IS mentions]- (s IS section)
+    COLUMNS (e.entity_type, m.relevance, s.title, s.doc_id)
+) gt
+JOIN documents d ON d.doc_id = gt.doc_id
+ORDER BY gt.relevance;
 ```
 
-**Find all sections in a document with their entity counts:**
+---
+
+## Oracle Property Graph Schema
 
 ```sql
-SELECT doc_name, section_title, entity_count
-FROM GRAPH_TABLE (doc_knowledge_graph
-    MATCH (d IS document) <-[]- (s IS section) -[m IS mentions]-> (e IS entity)
-    COLUMNS (
-        d.doc_name AS doc_name,
-        s.title AS section_title,
-        COUNT(e.entity_id) AS entity_count
+CREATE PROPERTY GRAPH doc_knowledge_graph
+    VERTEX TABLES (
+        documents   KEY (doc_id)     LABEL document  PROPERTIES ALL COLUMNS,
+        sections    KEY (section_id) LABEL section   PROPERTIES ALL COLUMNS,
+        entities    KEY (entity_id)  LABEL entity    PROPERTIES ALL COLUMNS
     )
-)
-ORDER BY entity_count DESC;
+    EDGE TABLES (
+        section_hierarchy   -- parent_of: section -> section
+            KEY (edge_id)
+            SOURCE KEY (parent_id) REFERENCES sections (section_id)
+            DESTINATION KEY (child_id) REFERENCES sections (section_id)
+            LABEL parent_of PROPERTIES ALL COLUMNS,
+        section_entities    -- mentions: section -> entity
+            KEY (edge_id)
+            SOURCE KEY (section_id) REFERENCES sections (section_id)
+            DESTINATION KEY (entity_id) REFERENCES entities (entity_id)
+            LABEL mentions PROPERTIES ALL COLUMNS,
+        entity_relationships -- related_to: entity -> entity
+            KEY (edge_id)
+            SOURCE KEY (source_entity) REFERENCES entities (entity_id)
+            DESTINATION KEY (target_entity) REFERENCES entities (entity_id)
+            LABEL related_to PROPERTIES ALL COLUMNS
+    );
+```
+
+---
+
+## Configuration
+
+Edit `oracle_pageindex/config.yaml`:
+
+```yaml
+ollama:
+  base_url: "http://localhost:11434"
+  model: "gemma3"          # Any Ollama model
+  temperature: 0
+
+oracle:
+  user: "pageindex"
+  password: "pageindex"
+  dsn: "localhost:1521/FREEPDB1"
+  pool_min: 1
+  pool_max: 5
+```
+
+Or override via CLI:
+
+```bash
+python run.py --model llama3.1 --oracle-dsn myhost:1521/MYPDB index doc.pdf
 ```
 
 ---
@@ -229,11 +397,11 @@ ORDER BY entity_count DESC;
 
 | Component | Technology |
 |---|---|
-| **Database** | Oracle Database 26ai Free (SQL Property Graphs) |
-| **Query Language** | SQL/PGQ (ISO SQL:2023 Property Graph Queries) |
-| **LLM** | Ollama (llama3.1, or any supported model) |
-| **Backend** | Python 3.11+, FastAPI, oracledb |
-| **Frontend** | D3.js (force-directed graph visualization) |
+| **Database** | Oracle Database 26ai Free (SQL Property Graphs, SQL/PGQ) |
+| **Graph Model** | `CREATE PROPERTY GRAPH` with ISO SQL:2023 `GRAPH_TABLE` |
+| **LLM** | Ollama (gemma3, llama3.1, or any supported model) |
+| **Backend** | Python 3.11+, FastAPI, python-oracledb |
+| **Visualization** | D3.js v7 (interactive force-directed graph) |
 | **PDF Parsing** | PyMuPDF, PyPDF2 |
 | **Tokenization** | tiktoken |
 | **Container** | Docker Compose |
@@ -245,24 +413,43 @@ ORDER BY entity_count DESC;
 ```
 OraclePageIndex/
   oracle_pageindex/
-    cli.py              # CLI entry point (init, index, query, serve)
-    config.yaml         # Default configuration
-    db.py               # Oracle Database connection & pooling
-    entity_extractor.py # LLM-powered named entity extraction
-    graph.py            # Property Graph CRUD (SQL/PGQ)
-    indexer.py          # Document indexing pipeline
-    llm.py              # Ollama LLM client
-    parser.py           # PDF parsing & section tree builder
-    query.py            # Graph-aware query engine
-    utils.py            # Config loader, token counting, helpers
+    cli.py              # CLI: init, index, query, serve
+    config.yaml         # Ollama + Oracle configuration
+    db.py               # Oracle connection pool + schema init
+    entity_extractor.py # LLM-powered entity extraction
+    graph.py            # Property Graph CRUD + SQL/PGQ queries
+    indexer.py          # Full indexing pipeline
+    llm.py              # Ollama API client
+    parser.py           # PDF parsing + section tree builder
+    query.py            # Graph-powered query engine
+    utils.py            # Config, tokens, tree manipulation
   api/
-    server.py           # FastAPI server with D3.js visualization
-  setup_schema.sql      # Oracle schema DDL + Property Graph definition
-  docker-compose.yml    # Oracle Database 26ai Free container
-  .env.example          # Environment variable template
-  pyproject.toml        # Python package configuration
-  run.py                # Convenience entry point
+    server.py           # FastAPI + D3.js visualization server
+  viz/
+    index.html          # D3.js single-page app
+    graph.js            # Force-directed graph rendering
+    style.css           # Dark-theme styling
+  tests/                # 30 tests (pytest)
+  setup_schema.sql      # Oracle DDL + Property Graph definition
+  docker-compose.yml    # Oracle 26ai Free container
+  run.py                # CLI entry point
 ```
+
+---
+
+## What Changed From PageIndex
+
+| | PageIndex | OraclePageIndex |
+|---|---|---|
+| **Storage** | JSON files on disk | Oracle Property Graph (SQL/PGQ) |
+| **LLM** | OpenAI GPT-4o | Ollama (fully local, open-source) |
+| **Retrieval** | LLM-driven tree navigation | SQL/PGQ graph traversal + LLM reasoning |
+| **Entities** | None | Full named entity extraction + cross-doc linking |
+| **Relationships** | None | Entity relationship discovery (RELATED_TO, PART_OF, OPERATES_IN, ...) |
+| **Visualization** | None | Interactive D3.js force-directed graph |
+| **Multi-document** | Separate JSON per doc | Unified knowledge graph across all documents |
+| **API** | None | FastAPI serving graph data + queries |
+| **Query interface** | None | Natural-language queries with source citations |
 
 ---
 
@@ -274,7 +461,7 @@ OraclePageIndex/
 
 ## Credits
 
-- **[PageIndex](https://github.com/VectifyAI/PageIndex)** by [VectifyAI](https://vectify.ai) -- the original vectorless, reasoning-based RAG framework that inspired this project.
+- **[PageIndex](https://github.com/VectifyAI/PageIndex)** by [VectifyAI](https://vectify.ai) -- the original vectorless, reasoning-based RAG framework.
 - **[Oracle Database](https://www.oracle.com/database/free/)** -- SQL Property Graphs (SQL/PGQ) provide the graph storage and query foundation.
-- **[Ollama](https://ollama.com/)** -- local LLM inference for entity extraction, summarization, and query answering.
-- **[D3.js](https://d3js.org/)** -- interactive force-directed graph visualization in the browser.
+- **[Ollama](https://ollama.com/)** -- local open-source LLM inference.
+- **[D3.js](https://d3js.org/)** -- interactive graph visualization.

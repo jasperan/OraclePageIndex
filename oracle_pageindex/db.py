@@ -36,6 +36,14 @@ class OracleDB:
             self._pool.close()
             self._pool = None
 
+    @staticmethod
+    def _strip_comments(text):
+        """Strip leading SQL comment lines from a text block."""
+        lines = text.split("\n")
+        while lines and lines[0].strip().startswith("--"):
+            lines.pop(0)
+        return "\n".join(lines).strip()
+
     def init_schema(self):
         schema_path = Path(__file__).parent.parent / "setup_schema.sql"
         if not schema_path.exists():
@@ -47,8 +55,8 @@ class OracleDB:
                 # Split on '/' for PL/SQL blocks and ';' for regular statements
                 blocks = sql_content.split("/\n")
                 for block in blocks:
-                    block = block.strip()
-                    if not block or block.startswith("--"):
+                    block = self._strip_comments(block)
+                    if not block:
                         continue
                     # Handle PL/SQL blocks (BEGIN...END;)
                     if block.upper().startswith("BEGIN"):
@@ -59,8 +67,8 @@ class OracleDB:
                     else:
                         # Split regular SQL statements by semicolon
                         for stmt in block.split(";"):
-                            stmt = stmt.strip()
-                            if stmt and not stmt.startswith("--"):
+                            stmt = self._strip_comments(stmt)
+                            if stmt:
                                 try:
                                     cur.execute(stmt)
                                 except oracledb.Error as e:
