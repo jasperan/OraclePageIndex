@@ -437,6 +437,85 @@ OraclePageIndex/
 
 ---
 
+## Testing
+
+The project includes 30 unit tests covering all core modules:
+
+```bash
+pytest tests/ -v
+```
+
+```
+tests/test_db.py          3 tests  (connection pool, schema init, close)
+tests/test_entity_extractor.py  3 tests  (entity extraction, relationships, edge cases)
+tests/test_graph.py       19 tests (all CRUD operations + SQL/PGQ queries)
+tests/test_llm.py         5 tests  (sync/async chat, JSON extraction)
+```
+
+All tests use mocked Oracle and Ollama connections, so no running services are needed for the test suite.
+
+---
+
+## Relational Tables (Under the Property Graph)
+
+Oracle SQL Property Graphs are defined on top of standard relational tables. Here are the underlying tables:
+
+```sql
+-- Vertex tables
+CREATE TABLE documents (
+    doc_id          NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    doc_name        VARCHAR2(500) NOT NULL,
+    doc_description CLOB,
+    source_path     VARCHAR2(1000),
+    created_at      TIMESTAMP DEFAULT SYSTIMESTAMP
+);
+
+CREATE TABLE sections (
+    section_id    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    doc_id        NUMBER NOT NULL REFERENCES documents(doc_id),
+    node_id       VARCHAR2(10),
+    title         VARCHAR2(1000),
+    summary       CLOB,
+    text_content  CLOB,
+    start_index   NUMBER,
+    end_index     NUMBER,
+    depth_level   NUMBER DEFAULT 0
+);
+
+CREATE TABLE entities (
+    entity_id     NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name          VARCHAR2(500) NOT NULL,
+    entity_type   VARCHAR2(100),
+    description   CLOB,
+    CONSTRAINT uq_entity UNIQUE (name, entity_type)
+);
+
+-- Edge tables
+CREATE TABLE section_hierarchy (
+    edge_id   NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    parent_id NUMBER NOT NULL REFERENCES sections(section_id),
+    child_id  NUMBER NOT NULL REFERENCES sections(section_id)
+);
+
+CREATE TABLE section_entities (
+    edge_id    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    section_id NUMBER NOT NULL REFERENCES sections(section_id),
+    entity_id  NUMBER NOT NULL REFERENCES entities(entity_id),
+    relevance  VARCHAR2(20) DEFAULT 'MENTIONS'   -- MENTIONS | DEFINES | DISCUSSES
+);
+
+CREATE TABLE entity_relationships (
+    edge_id       NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    source_entity NUMBER NOT NULL REFERENCES entities(entity_id),
+    target_entity NUMBER NOT NULL REFERENCES entities(entity_id),
+    relationship  VARCHAR2(100) DEFAULT 'RELATED_TO'
+);
+```
+
+The `CREATE PROPERTY GRAPH` statement then maps these tables to vertices and edges, enabling SQL/PGQ queries with `GRAPH_TABLE`, `MATCH` patterns, and recursive path expressions. You always retain full relational SQL access to the same data.
+
+---
+
 ## What Changed From PageIndex
 
 | | PageIndex | OraclePageIndex |

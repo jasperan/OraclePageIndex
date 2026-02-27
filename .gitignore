@@ -1,21 +1,60 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE & editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment & secrets
+.env*
+!.env.example
+
+# AI workload files
+CLAUDE.md
+.claude/
+docs/plans/
+.mcp*/
+mcp*.json
+.serena/
+.cursor/
+.aider*
+.copilot/
+
+# Testing & caches
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# PageIndex legacy
 .ipynb_checkpoints
-__pycache__
-files
-index
+files/
+index/
 temp/*
 chroma-collections.parquet
 chroma-embeddings.parquet
-.DS_Store
-.env*
-!.env.example
-notebook
+notebook/
 SDK/*
 log/*
 logs/
 parts/*
 json_results/*
-docs/plans/
 
 # OraclePageIndex
 results/
-*.pyc
