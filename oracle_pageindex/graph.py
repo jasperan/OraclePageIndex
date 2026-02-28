@@ -49,6 +49,7 @@ class GraphStore:
         depth_level,
     ):
         """Insert a section vertex and return its section_id."""
+        title = (title or "")[:4000]
         sql = """
             INSERT INTO sections
                 (doc_id, node_id, title, summary, text_content,
@@ -333,23 +334,24 @@ class GraphStore:
         return self.db.fetchall(sql, {"entity_name": entity_name})
 
     def graph_query_section_children(self, section_title):
-        """Use GRAPH_TABLE with recursive MATCH to find all descendants of a section.
+        """Find all descendants of a section using hierarchical CONNECT BY.
 
-        MATCH pattern: (parent) -[parent_of]->+ (child) for transitive closure.
+        Uses Oracle's CONNECT BY PRIOR for recursive traversal through the
+        section_hierarchy edge table (parent_of edges in the property graph).
         """
         sql = """
-            SELECT *
-            FROM GRAPH_TABLE (doc_knowledge_graph
-                MATCH (parent IS section) -[IS parent_of]->+ (child IS section)
-                WHERE parent.title = :section_title
-                COLUMNS (
-                    parent.section_id AS parent_section_id,
-                    parent.title AS parent_title,
-                    child.section_id AS child_section_id,
-                    child.title AS child_title,
-                    child.depth_level AS child_depth
-                )
+            SELECT s.section_id AS child_section_id,
+                   s.title       AS child_title,
+                   s.depth_level AS child_depth,
+                   LEVEL         AS tree_level
+            FROM   section_hierarchy h
+            JOIN   sections s ON s.section_id = h.child_id
+            START WITH h.parent_id = (
+                SELECT section_id FROM sections
+                WHERE title = :section_title
+                FETCH FIRST 1 ROWS ONLY
             )
-            ORDER BY child_depth, child_section_id
+            CONNECT BY PRIOR h.child_id = h.parent_id
+            ORDER BY s.depth_level, s.section_id
         """
         return self.db.fetchall(sql, {"section_title": section_title})

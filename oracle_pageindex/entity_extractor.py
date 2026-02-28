@@ -28,13 +28,11 @@ If no entities found, return an empty array []."""
         return entities
 
     async def extract_entities_for_sections(self, sections):
-        """Extract entities from multiple sections concurrently."""
-        tasks = []
+        """Extract entities from sections sequentially to avoid GPU OOM."""
         for section in sections:
             text = section.get("text", "") or section.get("summary", "")
             if text:
-                tasks.append(self._extract_for_section(section, text))
-        await asyncio.gather(*tasks)
+                await self._extract_for_section(section, text)
         return sections
 
     async def _extract_for_section(self, section, text):

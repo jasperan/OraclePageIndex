@@ -43,6 +43,7 @@ class Indexer:
             add_node_id=getattr(opt, "if_add_node_id", "yes") == "yes",
             add_summaries=getattr(opt, "if_add_node_summary", "yes") == "yes",
         )
+        self.extract_entities = getattr(opt, "if_extract_entities", "yes") == "yes"
         self.extractor = EntityExtractor(llm=llm)
         self.graph = GraphStore(db=db)
 
@@ -97,86 +98,90 @@ class Indexer:
         )
         logger.info(f"Inserted {len(all_sections)} section(s) into the graph")
 
-        # -- Step 4: Extract entities for each section ---------------------
-        loop = _get_or_create_event_loop()
-        loop.run_until_complete(
-            self.extractor.extract_entities_for_sections(all_sections)
-        )
-        logger.info("Entity extraction complete for all sections")
-
-        # -- Step 5: Upsert entities & create mention edges ----------------
-        entity_name_to_id = {}  # (name, type) -> entity_id
+        # -- Steps 4-6: Entity extraction (optional, can be slow) ----------
         unique_entities = []
+        relationships = []
 
-        for section in all_sections:
-            section_id = section["_section_id"]
-            entities = section.get("_entities", [])
+        if self.extract_entities:
+            # -- Step 4: Extract entities for each section -------------------
+            loop = _get_or_create_event_loop()
+            loop.run_until_complete(
+                self.extractor.extract_entities_for_sections(all_sections)
+            )
+            logger.info("Entity extraction complete for all sections")
 
-            for ent in entities:
-                name = ent.get("name", "").strip()
-                etype = ent.get("type", "CONCEPT").strip()
-                relevance = ent.get("relevance", "MENTIONS").strip()
+            # -- Step 5: Upsert entities & create mention edges -------------
+            entity_name_to_id = {}  # (name, type) -> entity_id
 
-                if not name:
-                    continue
+            for section in all_sections:
+                section_id = section["_section_id"]
+                entities = section.get("_entities", [])
 
-                key = (name, etype)
-                if key not in entity_name_to_id:
-                    entity_id = self.graph.upsert_entity(
-                        name=name,
-                        entity_type=etype,
-                        description="",
+                for ent in entities:
+                    name = ent.get("name", "").strip()
+                    etype = ent.get("type", "CONCEPT").strip()
+                    relevance = ent.get("relevance", "MENTIONS").strip()
+
+                    if not name:
+                        continue
+
+                    key = (name, etype)
+                    if key not in entity_name_to_id:
+                        entity_id = self.graph.upsert_entity(
+                            name=name,
+                            entity_type=etype,
+                            description="",
+                        )
+                        entity_name_to_id[key] = entity_id
+                        unique_entities.append(
+                            {"name": name, "type": etype, "entity_id": entity_id}
+                        )
+
+                    entity_id = entity_name_to_id[key]
+                    self.graph.insert_mention_edge(
+                        section_id=section_id,
+                        entity_id=entity_id,
+                        relevance=relevance,
                     )
-                    entity_name_to_id[key] = entity_id
-                    unique_entities.append(
-                        {"name": name, "type": etype, "entity_id": entity_id}
-                    )
 
-                entity_id = entity_name_to_id[key]
-                self.graph.insert_mention_edge(
-                    section_id=section_id,
-                    entity_id=entity_id,
-                    relevance=relevance,
+            logger.info(f"Upserted {len(unique_entities)} unique entity/entities")
+
+            # -- Step 6: Extract and store inter-entity relationships -------
+            if len(unique_entities) >= 2:
+                relationships = loop.run_until_complete(
+                    self.extractor.extract_relationships(unique_entities)
                 )
 
-        logger.info(f"Upserted {len(unique_entities)} unique entity/entities")
+                name_to_id = {}
+                for ent in unique_entities:
+                    name_to_id[ent["name"]] = ent["entity_id"]
 
-        # -- Step 6: Extract and store inter-entity relationships ----------
-        relationships = []
-        if len(unique_entities) >= 2:
-            relationships = loop.run_until_complete(
-                self.extractor.extract_relationships(unique_entities)
-            )
+                stored_rels = 0
+                for rel in relationships:
+                    source_name = rel.get("source", "").strip()
+                    target_name = rel.get("target", "").strip()
+                    relationship = rel.get("relationship", "RELATED_TO").strip()
 
-            # Build a name -> entity_id lookup for relationship mapping
-            name_to_id = {}
-            for ent in unique_entities:
-                name_to_id[ent["name"]] = ent["entity_id"]
+                    source_id = name_to_id.get(source_name)
+                    target_id = name_to_id.get(target_name)
 
-            stored_rels = 0
-            for rel in relationships:
-                source_name = rel.get("source", "").strip()
-                target_name = rel.get("target", "").strip()
-                relationship = rel.get("relationship", "RELATED_TO").strip()
+                    if source_id is not None and target_id is not None:
+                        self.graph.insert_entity_relationship(
+                            source_id=source_id,
+                            target_id=target_id,
+                            relationship=relationship,
+                        )
+                        stored_rels += 1
+                    else:
+                        logger.warning(
+                            f"Skipping relationship '{source_name}' -> '{target_name}': "
+                            f"entity not found in index"
+                        )
 
-                source_id = name_to_id.get(source_name)
-                target_id = name_to_id.get(target_name)
-
-                if source_id is not None and target_id is not None:
-                    self.graph.insert_entity_relationship(
-                        source_id=source_id,
-                        target_id=target_id,
-                        relationship=relationship,
-                    )
-                    stored_rels += 1
-                else:
-                    logger.warning(
-                        f"Skipping relationship '{source_name}' -> '{target_name}': "
-                        f"entity not found in index"
-                    )
-
-            relationships = relationships[:stored_rels] if stored_rels else []
-            logger.info(f"Stored {stored_rels} entity relationship(s)")
+                relationships = relationships[:stored_rels] if stored_rels else []
+                logger.info(f"Stored {stored_rels} entity relationship(s)")
+        else:
+            logger.info("Skipping entity extraction (disabled in config)")
 
         # -- Build stats and return ----------------------------------------
         stats = {
@@ -278,12 +283,18 @@ def _get_or_create_event_loop():
     """Get the running event loop or create a new one.
 
     Needed because the entity extractor uses async methods, but the
-    indexer's public API is synchronous.
+    indexer's public API is synchronous.  When running inside Jupyter
+    (which already has a running event loop), nest_asyncio is applied
+    so that ``loop.run_until_complete`` can be called without conflict.
     """
     try:
         loop = asyncio.get_event_loop()
         if loop.is_closed():
             raise RuntimeError("closed")
+        # If the loop is already running (e.g. inside Jupyter), patch it.
+        if loop.is_running():
+            import nest_asyncio
+            nest_asyncio.apply(loop)
         return loop
     except RuntimeError:
         loop = asyncio.new_event_loop()

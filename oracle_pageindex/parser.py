@@ -221,16 +221,19 @@ class DocumentParser:
                 page_list, start_page=current_start, end_page=end_page
             )
 
+            # Only send the last 10 sections for context to keep prompt
+            # within num_ctx limits (full ToC grows too large for long docs)
+            recent_toc = existing_toc[-10:] if len(existing_toc) > 10 else existing_toc
             prompt = (
                 "You are an expert in extracting hierarchical tree structures.\n"
-                "You are given the tree structure extracted so far and the text of "
+                "You are given the most recent sections extracted so far and the text of "
                 "additional pages. Continue the tree structure to include these pages.\n\n"
                 "Return ONLY a JSON array of new items (do NOT repeat previous items). "
                 "Each item has:\n"
                 '  - "structure": hierarchical numbering\n'
                 '  - "title": the section title\n'
                 '  - "physical_index": the 1-based page number\n\n'
-                f"Previous structure:\n{json.dumps(existing_toc, indent=2)}\n\n"
+                f"Recent sections:\n{json.dumps(recent_toc)}\n\n"
                 f"Additional pages:\n{labelled_text}"
             )
 
@@ -288,7 +291,7 @@ class DocumentParser:
 
         logger.info(f"Generating summaries for {len(nodes_with_text)} nodes")
 
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        with ThreadPoolExecutor(max_workers=1) as pool:
             futures = {
                 pool.submit(self._summarize_node, node): node
                 for node in nodes_with_text

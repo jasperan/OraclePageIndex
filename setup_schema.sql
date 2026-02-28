@@ -31,7 +31,7 @@ CREATE TABLE sections (
     section_id    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     doc_id        NUMBER NOT NULL REFERENCES documents(doc_id),
     node_id       VARCHAR2(10),
-    title         VARCHAR2(1000),
+    title         VARCHAR2(4000),
     summary       CLOB,
     text_content  CLOB,
     start_index   NUMBER,

@@ -65,6 +65,7 @@ def cmd_index(args):
         base_url=cfg.ollama_base_url,
         model=cfg.ollama_model,
         temperature=cfg.ollama_temperature,
+        num_ctx=getattr(cfg, 'ollama_num_ctx', 16384),
     )
     db = OracleDB(
         user=cfg.oracle_user,
@@ -92,6 +93,7 @@ def cmd_query(args):
         base_url=cfg.ollama_base_url,
         model=cfg.ollama_model,
         temperature=cfg.ollama_temperature,
+        num_ctx=getattr(cfg, 'ollama_num_ctx', 16384),
     )
     db = OracleDB(
         user=cfg.oracle_user,

@@ -64,6 +64,7 @@ def _init_backend():
             base_url=ollama_cfg.get("base_url", "http://localhost:11434"),
             model=ollama_cfg.get("model", "llama3.1"),
             temperature=ollama_cfg.get("temperature", 0),
+            num_ctx=ollama_cfg.get("num_ctx", 16384),
         )
         logger.info("OllamaClient initialised (model=%s)", llm.model)
     except Exception:

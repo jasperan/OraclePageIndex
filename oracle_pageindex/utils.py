@@ -156,6 +156,9 @@ def get_page_tokens(pdf_path, model: str = None, pdf_parser: str = "PyMuPDF"):
 
 def get_text_of_pdf_pages(pdf_pages, start_page: int, end_page: int) -> str:
     """Join the raw text of pages *start_page* .. *end_page* (1‑based, inclusive)."""
+    total = len(pdf_pages)
+    start_page = max(1, min(start_page, total))
+    end_page = max(start_page, min(end_page, total))
     text = ""
     for page_num in range(start_page - 1, end_page):
         text += pdf_pages[page_num][0]
@@ -300,14 +303,25 @@ def post_processing(structure, end_physical_index: int):
     *structure* is expected to be a flat list coming from the LLM with
     ``physical_index`` on each item.
     """
+    # Filter out items missing physical_index or with out-of-range values
+    structure = [
+        item for item in structure
+        if item.get("physical_index") is not None
+        and isinstance(item.get("physical_index"), int)
+        and 1 <= item["physical_index"] <= end_physical_index
+    ]
+
+    if not structure:
+        return []
+
     for i, item in enumerate(structure):
         item["start_index"] = item.get("physical_index")
         if i < len(structure) - 1:
             next_item = structure[i + 1]
             if next_item.get("appear_start") == "yes":
-                item["end_index"] = next_item["physical_index"] - 1
+                item["end_index"] = next_item.get("physical_index", end_physical_index) - 1
             else:
-                item["end_index"] = next_item["physical_index"]
+                item["end_index"] = next_item.get("physical_index", end_physical_index)
         else:
             item["end_index"] = end_physical_index
 

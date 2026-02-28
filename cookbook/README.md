@@ -1,14 +1,43 @@
-### 🧪 Cookbooks:
+# OraclePageIndex Cookbook
 
-* [**Vectorless RAG notebook**](https://github.com/VectifyAI/PageIndex/blob/main/cookbook/pageindex_RAG_simple.ipynb): A *minimal*, hands-on example of reasoning-based RAG using **PageIndex** — no vectors, no chunking, and human-like retrieval.
-* [Vision-based Vectorless RAG notebook](https://github.com/VectifyAI/PageIndex/blob/main/cookbook/vision_RAG_pageindex.ipynb): no OCR; reasoning-native RAG pipeline that retrieves and reasons directly over page images.
+Hands-on notebooks showcasing **OraclePageIndex** — reasoning-based, vectorless document intelligence powered by Oracle SQL Property Graphs and Ollama.
 
-<div align="center">
-  <a href="https://colab.research.google.com/github/VectifyAI/PageIndex/blob/main/cookbook/pageindex_RAG_simple.ipynb" target="_blank" rel="noopener">
-    <img src="https://img.shields.io/badge/Open_In_Colab-Vectorless_RAG-orange?style=for-the-badge&logo=googlecolab" alt="Open in Colab: Vectorless RAG" />
-  </a>
-  &nbsp;&nbsp;
-  <a href="https://colab.research.google.com/github/VectifyAI/PageIndex/blob/main/cookbook/vision_RAG_pageindex.ipynb" target="_blank" rel="noopener">
-    <img src="https://img.shields.io/badge/Open_In_Colab-Vision_RAG-orange?style=for-the-badge&logo=googlecolab" alt="Open in Colab: Vision RAG" />
-  </a>
-</div>
+---
+
+## Notebooks
+
+| # | Notebook | Oracle Required | Description |
+|---|----------|:-:|---|
+| 1 | **[Simple Graph RAG](graph_RAG_simple.ipynb)** | No | Minimal vectorless RAG: parse a PDF into a tree with Ollama, search via LLM reasoning, generate answers. No database needed. |
+| 2 | **[Oracle Graph Quickstart](oracle_graph_quickstart.ipynb)** | Yes | Full pipeline: index a PDF into an Oracle Property Graph, query with natural language and SQL/PGQ. |
+| 3 | **[Graph Retrieval](graph_retrieval.ipynb)** | Yes | Deep dive into SQL/PGQ structured retrieval: entity search, relationship discovery, multi-hop traversal. |
+| 4 | **[Vision RAG](vision_RAG_oracle.ipynb)** | No | Vision-based RAG: send PDF page images directly to a multimodal Ollama model — no OCR needed. |
+
+---
+
+## Prerequisites
+
+**All notebooks:**
+- [Ollama](https://ollama.com/) running locally with a model pulled (`ollama pull gemma3`)
+- Python packages: `pip install -e .` from project root
+
+**Notebooks 2 & 3 (Oracle):**
+- Oracle Database 26ai Free running (`docker compose up -d` from project root)
+- Database user `pageindex` with `CREATE PROPERTY GRAPH` grant (see main [README](../README.md))
+
+**Notebook 4 (Vision):**
+- A vision-capable Ollama model (`gemma3` supports multimodal out of the box)
+- PyMuPDF: `pip install PyMuPDF`
+
+---
+
+## Recommended Order
+
+1. Start with **Simple Graph RAG** to understand the core concept (tree search, no vectors)
+2. Move to **Oracle Graph Quickstart** to see the full pipeline with persistent storage
+3. Explore **Graph Retrieval** for advanced SQL/PGQ queries and structured retrieval
+4. Try **Vision RAG** for multimodal document QA over page images
+
+---
+
+*Built with [OraclePageIndex](https://github.com/jasperan/OraclePageIndex) — Oracle AI Database powered document intelligence with Property Graphs.*
