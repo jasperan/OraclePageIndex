@@ -70,6 +70,9 @@ class ConfigLoader:
         """Merge *user_opt* into the default config and return a
         ``SimpleNamespace`` that supports both ``cfg.ollama_model`` and
         ``cfg.ollama`` (as a nested dict).
+
+        Environment variables override config.yaml values:
+          ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN
         """
         if user_opt is None:
             user_dict = {}
@@ -84,6 +87,17 @@ class ConfigLoader:
 
         # Deep‑merge: user values override defaults
         merged = {**self._default_dict, **user_dict}
+
+        # Apply environment variable overrides for Oracle credentials
+        oracle = merged.get("oracle", {})
+        if isinstance(oracle, dict):
+            if os.environ.get("ORACLE_USER"):
+                oracle["user"] = os.environ["ORACLE_USER"]
+            if os.environ.get("ORACLE_PASSWORD"):
+                oracle["password"] = os.environ["ORACLE_PASSWORD"]
+            if os.environ.get("ORACLE_DSN"):
+                oracle["dsn"] = os.environ["ORACLE_DSN"]
+            merged["oracle"] = oracle
 
         # Flatten nested sections into top‑level keys
         flat = self._flatten(merged)

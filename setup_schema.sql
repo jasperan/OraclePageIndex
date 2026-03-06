@@ -70,6 +70,7 @@ CREATE TABLE entity_relationships (
 
 -- Indexes for performance
 CREATE INDEX idx_sections_doc_id ON sections(doc_id);
+CREATE INDEX idx_entities_name ON entities(LOWER(name));
 CREATE INDEX idx_section_hierarchy_parent ON section_hierarchy(parent_id);
 CREATE INDEX idx_section_hierarchy_child ON section_hierarchy(child_id);
 CREATE INDEX idx_section_entities_section ON section_entities(section_id);

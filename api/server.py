@@ -70,13 +70,14 @@ def _init_backend():
     except Exception:
         logger.exception("Failed to create OllamaClient")
 
-    # Oracle DB + GraphStore
+    # Oracle DB + GraphStore (env vars take priority over config)
     try:
+        import os as _os
         oracle_cfg = cfg.oracle if hasattr(cfg, "oracle") else {}
         db = OracleDB(
-            user=oracle_cfg.get("user", "pageindex"),
-            password=oracle_cfg.get("password", "pageindex"),
-            dsn=oracle_cfg.get("dsn", "localhost:1521/FREEPDB1"),
+            user=_os.environ.get("ORACLE_USER", oracle_cfg.get("user", "pageindex")),
+            password=_os.environ.get("ORACLE_PASSWORD", oracle_cfg.get("password", "pageindex")),
+            dsn=_os.environ.get("ORACLE_DSN", oracle_cfg.get("dsn", "localhost:1521/FREEPDB1")),
             pool_min=oracle_cfg.get("pool_min", 1),
             pool_max=oracle_cfg.get("pool_max", 5),
         )
@@ -242,7 +243,7 @@ async def api_related_entities(entity_name: str):
 
 
 @app.get("/api/query")
-async def api_query(q: str = Query(..., min_length=1, description="Natural language question")):
+async def api_query(q: str = Query(..., min_length=1, max_length=5000, description="Natural language question")):
     """Answer a question using graph-retrieved context and Ollama reasoning."""
     if query_engine is None:
         raise HTTPException(

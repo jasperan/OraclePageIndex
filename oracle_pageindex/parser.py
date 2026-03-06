@@ -72,7 +72,7 @@ class DocumentParser:
     # Public API
     # ------------------------------------------------------------------
 
-    def parse_pdf(self, pdf_path):
+    def parse_pdf(self, pdf_path: str):
         """Extract per-page text and token counts from a PDF.
 
         Returns
@@ -81,7 +81,21 @@ class DocumentParser:
             Each element is ``(page_text, token_count)``.
         doc_name : str
             Human-friendly document name derived from the file path.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the PDF file does not exist.
+        ValueError
+            If the path does not point to a PDF file.
         """
+        import os
+        if isinstance(pdf_path, str):
+            if not os.path.isfile(pdf_path):
+                raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+            if not pdf_path.lower().endswith(".pdf"):
+                raise ValueError(f"Expected a .pdf file, got: {pdf_path}")
+
         page_list = get_page_tokens(
             pdf_path, model=self.llm.model, pdf_parser=self.pdf_parser
         )
@@ -170,10 +184,11 @@ class DocumentParser:
             f"Document text:\n{labelled_text}"
         )
 
-        response = self.llm.chat(prompt)
-
-        if response == "Error":
-            logger.error("LLM returned error for tree generation")
+        from .llm import OllamaError
+        try:
+            response = self.llm.chat(prompt)
+        except OllamaError:
+            logger.error("LLM failed for tree generation")
             return None
 
         parsed = self.llm.extract_json(response)
@@ -237,8 +252,9 @@ class DocumentParser:
                 f"Additional pages:\n{labelled_text}"
             )
 
-            response = self.llm.chat(prompt)
-            if response == "Error":
+            try:
+                response = self.llm.chat(prompt)
+            except OllamaError:
                 break
 
             parsed = self.llm.extract_json(response)
@@ -291,7 +307,7 @@ class DocumentParser:
 
         logger.info(f"Generating summaries for {len(nodes_with_text)} nodes")
 
-        with ThreadPoolExecutor(max_workers=1) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             futures = {
                 pool.submit(self._summarize_node, node): node
                 for node in nodes_with_text
@@ -312,10 +328,15 @@ class DocumentParser:
         text = node.get("text", "")
         title = node.get("title", "Untitled")
 
-        # Truncate very long text to stay within context limits
-        max_chars = 12_000
-        if len(text) > max_chars:
-            text = text[:max_chars] + "\n[...truncated...]"
+        # Truncate very long text to stay within context limits (token-aware)
+        max_tokens = 10_000
+        token_count = count_tokens(text)
+        if token_count > max_tokens:
+            # Rough truncation: 1 token ~ 4 chars, then verify
+            text = text[:max_tokens * 4]
+            while count_tokens(text) > max_tokens:
+                text = text[:int(len(text) * 0.9)]
+            text = text + "\n[...truncated...]"
 
         prompt = (
             "You are given a section of a document. Generate a concise description "
@@ -325,7 +346,8 @@ class DocumentParser:
             "Directly return the description, do not include any other text."
         )
 
-        response = self.llm.chat(prompt)
-        if response == "Error":
+        from .llm import OllamaError
+        try:
+            return self.llm.chat(prompt)
+        except OllamaError:
             return ""
-        return response

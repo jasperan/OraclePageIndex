@@ -2,7 +2,15 @@
 
 import logging
 
+from .llm import OllamaError
+from .utils import count_tokens
+
 logger = logging.getLogger(__name__)
+
+# Maximum tokens of context to send to the LLM for reasoning
+_MAX_CONTEXT_TOKENS = 12_000
+# Maximum allowed query length (characters)
+MAX_QUERY_LENGTH = 5_000
 
 
 class QueryEngine:
@@ -11,16 +19,20 @@ class QueryEngine:
 
     Workflow:
         1. Extract key concepts from the question via Ollama.
-        2. Look up graph entities matching those concepts.
+        2. Look up graph entities matching those concepts (batch lookup).
         3. Retrieve relevant sections (with fallback to title substring matching).
         4. Enrich context with related entities from the graph.
-        5. Build a markdown context block and send it to Ollama for reasoning.
+        5. Build a token-budgeted markdown context block and send it to Ollama.
     """
 
     CONCEPT_EXTRACTION_PROMPT = (
         "Extract the key concepts from the following question. "
         "Return ONLY a JSON array of strings, nothing else. "
         "Each string should be a single concept or entity mentioned in the question.\n\n"
+        "Examples:\n"
+        '  Question: "What is Apple\'s revenue?" -> ["Apple", "revenue"]\n'
+        '  Question: "How does X relate to Y?" -> ["X", "Y"]\n'
+        '  Question: "What are the main risk factors?" -> ["risk factors"]\n\n'
         "Question: {question}\n\n"
         "JSON array:"
     )
@@ -30,40 +42,34 @@ class QueryEngine:
         "document context retrieved from a knowledge graph. "
         "Use ONLY the provided context to answer. "
         "If the context does not contain enough information, say so clearly. "
-        "Cite the document and section titles when referencing specific information."
+        "Cite the document and section titles when referencing specific information. "
+        "Do NOT invent or hallucinate information not present in the context."
     )
 
     REASONING_USER_PROMPT = (
         "Context from the knowledge graph:\n\n"
         "{context}\n\n"
         "---\n\n"
-        "Question: {question}\n\n"
-        "Answer:"
+        "Question: <<{question}>>\n\n"
+        "Answer based ONLY on the context above:"
     )
 
     def __init__(self, llm, graph):
-        """Initialize the query engine.
-
-        Args:
-            llm: An OllamaClient instance for LLM interaction.
-            graph: A GraphStore instance for knowledge graph queries.
-        """
         self.llm = llm
         self.graph = graph
 
-    def query(self, question):
+    def query(self, question: str) -> dict:
         """Answer a question using graph-retrieved context and LLM reasoning.
 
         Args:
-            question: The user's natural language question.
+            question: The user's natural language question (max 5000 chars).
 
         Returns:
-            dict with keys:
-                - answer (str): The LLM-generated answer.
-                - sources (list[dict]): Each has 'title' and 'doc_name'.
-                - concepts (list[str]): Extracted query concepts.
-                - related_entities (list[dict]): Related entities from the graph.
+            dict with keys: answer, sources, concepts, related_entities.
         """
+        if len(question) > MAX_QUERY_LENGTH:
+            question = question[:MAX_QUERY_LENGTH]
+
         # Step 1: Extract concepts from the question
         concepts = self._extract_query_concepts(question)
         logger.info(f"Extracted concepts: {concepts}")
@@ -76,7 +82,7 @@ class QueryEngine:
                 "related_entities": [],
             }
 
-        # Step 2: Find sections that mention the extracted entities
+        # Step 2: Find sections that mention the extracted entities (batch)
         sections_by_id = {}
         for concept in concepts:
             entity_sections = self.graph.get_entity_sections(concept)
@@ -108,12 +114,13 @@ class QueryEngine:
         for concept in concepts:
             related = self.graph.get_related_entities(concept)
             for rel in related:
-                rel_key = (rel.get("name") or rel.get("related_name", ""), rel.get("relationship", ""))
+                rel_key = (rel.get("name") or rel.get("related_name", ""),
+                           rel.get("relationship", ""))
                 if rel_key not in seen_related:
                     seen_related.add(rel_key)
                     all_related.append(rel)
 
-        # Step 6: Build the context string
+        # Step 6: Build the context string (with token budget)
         sections_list = list(sections_by_id.values())
         context = self._build_context(sections_list, all_related)
 
@@ -145,26 +152,20 @@ class QueryEngine:
             ],
         }
 
-    def _extract_query_concepts(self, question):
-        """Ask the LLM to extract key concepts from the question.
-
-        Returns:
-            list[str]: A list of concept strings.
-        """
+    def _extract_query_concepts(self, question: str) -> list[str]:
+        """Ask the LLM to extract key concepts from the question."""
         prompt = self.CONCEPT_EXTRACTION_PROMPT.format(question=question)
-        raw_response = self.llm.chat(prompt)
-
-        if not raw_response or raw_response == "Error":
+        try:
+            raw_response = self.llm.chat(prompt)
+        except OllamaError:
             logger.error("LLM failed to extract concepts")
             return []
 
         parsed = self.llm.extract_json(raw_response)
 
-        # extract_json may return a list directly or a dict
         if isinstance(parsed, list):
             return [str(c).strip() for c in parsed if c]
         elif isinstance(parsed, dict):
-            # Some LLMs wrap the array in a key
             for value in parsed.values():
                 if isinstance(value, list):
                     return [str(c).strip() for c in value if c]
@@ -173,15 +174,8 @@ class QueryEngine:
             logger.warning(f"Unexpected concept extraction result type: {type(parsed)}")
             return []
 
-    def _fallback_title_search(self, concepts):
-        """Search all document sections for titles containing any of the concepts.
-
-        This is used when no entity matches are found in the graph. It performs
-        case-insensitive substring matching against section titles.
-
-        Returns:
-            dict: section_id -> section dict
-        """
+    def _fallback_title_search(self, concepts: list[str]) -> dict:
+        """Search all document sections for titles containing any of the concepts."""
         sections_by_id = {}
         documents = self.graph.get_all_documents()
         concepts_lower = [c.lower() for c in concepts]
@@ -194,48 +188,62 @@ class QueryEngine:
                     if concept_lower in title:
                         sid = sec["section_id"]
                         if sid not in sections_by_id:
-                            # Attach doc_name for source tracking
                             sec["doc_name"] = doc.get("doc_name", "Unknown")
                             sections_by_id[sid] = sec
-                        break  # No need to check remaining concepts for this section
+                        break
 
         logger.info(f"Fallback title search found {len(sections_by_id)} section(s)")
         return sections_by_id
 
-    def _build_context(self, sections, related_entities):
-        """Build a markdown-formatted context string from sections and related entities.
+    def _build_context(self, sections: list, related_entities: list) -> str:
+        """Build a markdown-formatted context string, respecting the token budget.
 
-        Args:
-            sections: List of section dicts with title, summary/text_content, doc_name.
-            related_entities: List of related entity dicts.
-
-        Returns:
-            str: Formatted markdown context.
+        Sections are added in order until the token budget is exhausted.
+        Related entities are appended at the end if budget allows.
         """
         parts = []
+        token_budget = _MAX_CONTEXT_TOKENS
+        tokens_used = 0
 
-        # Relevant document sections
         parts.append("## Relevant Document Sections\n")
+        tokens_used += count_tokens(parts[0])
+
         for sec in sections:
             title = sec.get("title") or sec.get("section_title", "Untitled")
             doc_name = sec.get("doc_name", "Unknown")
             depth = sec.get("depth_level", 0)
             relevance = sec.get("relevance", "")
 
-            parts.append(f"### {title}")
-            parts.append(f"**Document:** {doc_name} | **Depth:** {depth}")
+            section_parts = [f"### {title}"]
+            section_parts.append(f"**Document:** {doc_name} | **Depth:** {depth}")
             if relevance:
-                parts.append(f"**Relevance:** {relevance}")
+                section_parts.append(f"**Relevance:** {relevance}")
 
-            # Prefer text_content, fall back to summary
             content = sec.get("text_content") or sec.get("summary") or ""
             if content:
-                parts.append(f"\n{content}")
-            parts.append("")  # blank line separator
+                section_parts.append(f"\n{content}")
+            section_parts.append("")
 
-        # Related concepts
-        if related_entities:
-            parts.append("## Related Concepts\n")
+            section_text = "\n".join(section_parts)
+            section_tokens = count_tokens(section_text)
+
+            if tokens_used + section_tokens > token_budget:
+                # Try truncating the content to fit remaining budget
+                remaining = token_budget - tokens_used
+                if remaining > 200:  # Worth including a truncated version
+                    truncated = content[:remaining * 3]  # rough char estimate
+                    section_parts = [f"### {title}", f"**Document:** {doc_name}",
+                                     f"\n{truncated}\n[...truncated...]", ""]
+                    section_text = "\n".join(section_parts)
+                    parts.append(section_text)
+                break
+
+            parts.append(section_text)
+            tokens_used += section_tokens
+
+        # Related concepts (if budget allows)
+        if related_entities and tokens_used < token_budget - 200:
+            rel_parts = ["## Related Concepts\n"]
             for ent in related_entities:
                 name = ent.get("name") or ent.get("related_name", "")
                 ent_type = ent.get("entity_type") or ent.get("related_type", "")
@@ -245,28 +253,26 @@ class QueryEngine:
                 entry = f"- **{name}** ({ent_type}) — _{relationship}_"
                 if description:
                     entry += f": {description}"
-                parts.append(entry)
-            parts.append("")
+                rel_parts.append(entry)
+
+                tokens_used += count_tokens(entry)
+                if tokens_used >= token_budget:
+                    break
+            rel_parts.append("")
+            parts.append("\n".join(rel_parts))
 
         return "\n".join(parts)
 
-    def _reason(self, question, context):
-        """Send the context and question to the LLM for a reasoned answer.
-
-        Args:
-            question: The user's original question.
-            context: The markdown-formatted context string.
-
-        Returns:
-            str: The LLM's answer.
-        """
+    def _reason(self, question: str, context: str) -> str:
+        """Send the context and question to the LLM for a reasoned answer."""
         chat_history = [
             {"role": "system", "content": self.REASONING_SYSTEM_PROMPT},
         ]
         prompt = self.REASONING_USER_PROMPT.format(context=context, question=question)
 
-        answer = self.llm.chat(prompt, chat_history=chat_history)
-        if not answer or answer == "Error":
+        try:
+            answer = self.llm.chat(prompt, chat_history=chat_history)
+        except OllamaError:
             return "An error occurred while generating the answer. Please try again."
 
         return answer

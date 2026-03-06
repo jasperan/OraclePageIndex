@@ -1,11 +1,12 @@
 # Ollama LLM configuration
 ollama:
   base_url: "http://localhost:11434"
-  model: "mistral:7b"
+  model: "gemma3"
   temperature: 0
-  num_ctx: 8192
+  num_ctx: 16384
 
 # Oracle Database configuration
+# Override via env vars: ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN
 oracle:
   user: "pageindex"
   password: "pageindex"
@@ -15,7 +16,6 @@ oracle:
 
 # PageIndex configuration (kept from original)
 toc_check_page_num: 5
-max_page_num_each_node: 10
 max_token_num_each_node: 20000
 if_add_node_id: "yes"
 if_add_node_summary: "no"
