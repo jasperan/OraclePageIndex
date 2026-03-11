@@ -608,3 +608,28 @@ Leave a star if you find this useful!
 [MIT License](LICENSE)
 
 </div>
+
+
+## Installation
+
+<!-- one-command-install -->
+> **One-command install** — clone, configure, and run in a single step:
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/jasperan/OraclePageIndex/main/install.sh | bash
+> ```
+>
+> <details><summary>Advanced options</summary>
+>
+> Override install location:
+> ```bash
+> PROJECT_DIR=/opt/myapp curl -fsSL https://raw.githubusercontent.com/jasperan/OraclePageIndex/main/install.sh | bash
+> ```
+>
+> Or install manually:
+> ```bash
+> git clone https://github.com/jasperan/OraclePageIndex.git
+> cd OraclePageIndex
+> # See below for setup instructions
+> ```
+> </details>
