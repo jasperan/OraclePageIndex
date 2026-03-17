@@ -219,7 +219,8 @@ html, body {
 
 /* --- Dim / Highlight states --- */
 .dimmed {
-    opacity: 0.08 !important;
+    opacity: 0.15 !important;
+    transition: opacity 0.3s ease;
 }
 
 .highlighted circle {
@@ -423,6 +424,51 @@ html, body {
     .legend-label {
         font-size: 11px;
     }
+}
+
+/* --- Query Path Visualization --- */
+.path-node circle {
+    stroke: #f0883e !important;
+    stroke-width: 3px !important;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.path-edge line {
+    stroke: #f0883e !important;
+    stroke-width: 2.5px !important;
+    stroke-dasharray: 8 4;
+    animation: flow 1s linear infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { stroke-opacity: 1; }
+    50% { stroke-opacity: 0.4; }
+}
+
+@keyframes flow {
+    to { stroke-dashoffset: -12; }
+}
+
+.step-badge {
+    pointer-events: none;
+}
+
+/* --- Traversal panel scrollbar --- */
+#traversal-panel::-webkit-scrollbar {
+    width: 6px;
+}
+
+#traversal-panel::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#traversal-panel::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+#traversal-panel::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
 }
 
 @media (max-width: 480px) {

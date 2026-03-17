@@ -77,6 +77,23 @@
         <span id="stats-text"></span>
     </div>
 
+    <!-- Query Interface -->
+    <div id="query-interface" style="position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:1000; display:flex; gap:8px; background:#161b22; padding:12px 16px; border-radius:12px; border:1px solid #30363d; box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+        <input type="text" id="query-input" placeholder="Ask a question..." style="width:400px; padding:8px 12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; color:#e6edf3; font-size:14px;">
+        <button id="query-btn" style="padding:8px 16px; background:#238636; border:none; border-radius:8px; color:#fff; cursor:pointer; font-size:14px;">Query</button>
+        <button id="clear-path-btn" style="padding:8px 16px; background:#30363d; border:none; border-radius:8px; color:#e6edf3; cursor:pointer; font-size:14px; display:none;">Show Full Graph</button>
+        <button id="replay-btn" style="padding:8px 16px; background:#30363d; border:none; border-radius:8px; color:#e6edf3; cursor:pointer; font-size:14px; display:none;">Replay</button>
+    </div>
+
+    <!-- Traversal Panel (shows SQL queries) -->
+    <div id="traversal-panel" style="display:none; position:fixed; right:20px; top:80px; width:380px; max-height:calc(100vh - 160px); overflow-y:auto; background:#161b22; border:1px solid #30363d; border-radius:12px; padding:16px; z-index:999;">
+        <h3 style="margin:0 0 12px; color:#e6edf3; font-size:14px;">Query Traversal</h3>
+        <div id="traversal-steps"></div>
+        <h3 style="margin:16px 0 8px; color:#e6edf3; font-size:14px;">SQL/PGQ Queries</h3>
+        <div id="query-sql-list"></div>
+        <div id="query-answer" style="margin-top:12px; padding:12px; background:#0d1117; border-radius:8px; color:#8b949e; font-size:13px; display:none;"></div>
+    </div>
+
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="/viz/graph.js"></script>
 </body>

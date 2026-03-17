@@ -542,6 +542,16 @@
                 searchInput.focus();
             }
         });
+
+        // Query path visualization controls
+        document.getElementById("query-btn").addEventListener("click", submitQuery);
+        document.getElementById("query-input").addEventListener("keypress", (e) => {
+            if (e.key === "Enter") submitQuery();
+        });
+        document.getElementById("clear-path-btn").addEventListener("click", clearTraversalOverlay);
+        document.getElementById("replay-btn").addEventListener("click", () => {
+            if (window._lastTraversalPath) replayTraversal(window._lastTraversalPath);
+        });
     }
 
     // ---------------------------------------------------------------
@@ -559,6 +569,201 @@
             case "mentions":   return "#d29922";
             case "related_to": return "#bc8cff";
             default:           return "#6e7681";
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Query Path Visualization
+    // ---------------------------------------------------------------
+
+    function renderTraversalPath(traversalPath, graphQueries) {
+        if (!traversalPath || traversalPath.length === 0) return;
+
+        // Store for replay
+        window._lastTraversalPath = traversalPath;
+
+        // Dim all nodes and edges
+        nodeSel.classed("dimmed", true);
+        linkSel.classed("dimmed", true);
+
+        // Build set of path node IDs
+        const pathNodeIds = new Set();
+        traversalPath.forEach(function (step) {
+            var prefix = step.node_type === "entity" ? "ent_" :
+                         step.node_type === "section" ? "sec_" : "doc_";
+            pathNodeIds.add(prefix + step.node_id);
+        });
+
+        // Highlight path nodes
+        nodeSel.each(function (d) {
+            if (pathNodeIds.has(d.id)) {
+                d3.select(this).classed("dimmed", false).classed("path-node", true);
+            }
+        });
+
+        // Highlight edges between path nodes
+        linkSel.each(function (d) {
+            var srcId = typeof d.source === "object" ? d.source.id : d.source;
+            var tgtId = typeof d.target === "object" ? d.target.id : d.target;
+            if (pathNodeIds.has(srcId) && pathNodeIds.has(tgtId)) {
+                d3.select(this).classed("dimmed", false).classed("path-edge", true);
+            }
+        });
+
+        // Add step badges inside the zoom container
+        var g = svg.__container;
+        g.selectAll(".step-badge").remove();
+
+        traversalPath.forEach(function (step) {
+            var prefix = step.node_type === "entity" ? "ent_" :
+                         step.node_type === "section" ? "sec_" : "doc_";
+            var nodeId = prefix + step.node_id;
+
+            nodeSel.each(function (d) {
+                if (d.id === nodeId) {
+                    g.append("circle")
+                        .attr("class", "step-badge")
+                        .attr("cx", d.x - 12)
+                        .attr("cy", d.y - 12)
+                        .attr("r", 8)
+                        .attr("fill", "#238636");
+
+                    g.append("text")
+                        .attr("class", "step-badge")
+                        .attr("x", d.x - 12)
+                        .attr("y", d.y - 8)
+                        .attr("text-anchor", "middle")
+                        .attr("fill", "#fff")
+                        .attr("font-size", "10px")
+                        .attr("font-weight", "bold")
+                        .text(step.step_number);
+                }
+            });
+        });
+
+        // Show traversal panel
+        renderTraversalPanel(traversalPath, graphQueries);
+
+        document.getElementById("clear-path-btn").style.display = "inline-block";
+        document.getElementById("replay-btn").style.display = "inline-block";
+    }
+
+    function replayTraversal(traversalPath) {
+        clearTraversalOverlay();
+
+        // Dim everything
+        nodeSel.classed("dimmed", true);
+        linkSel.classed("dimmed", true);
+
+        traversalPath.forEach(function (step, i) {
+            setTimeout(function () {
+                var prefix = step.node_type === "entity" ? "ent_" :
+                             step.node_type === "section" ? "sec_" : "doc_";
+                var nodeId = prefix + step.node_id;
+
+                nodeSel.each(function (d) {
+                    if (d.id === nodeId) {
+                        d3.select(this)
+                            .classed("dimmed", false)
+                            .classed("path-node", true)
+                            .select("circle")
+                            .transition()
+                            .duration(200)
+                            .attr("r", function () { return +d3.select(this).attr("r") + 4; })
+                            .transition()
+                            .duration(200)
+                            .attr("r", function () { return +d3.select(this).attr("r") - 4; });
+                    }
+                });
+
+                // On last step, show panel and buttons again
+                if (i === traversalPath.length - 1) {
+                    renderTraversalPanel(traversalPath, []);
+                    document.getElementById("clear-path-btn").style.display = "inline-block";
+                    document.getElementById("replay-btn").style.display = "inline-block";
+                }
+            }, i * 400);
+        });
+    }
+
+    function renderTraversalPanel(traversalPath, graphQueries) {
+        var panel = document.getElementById("traversal-panel");
+        var stepsDiv = document.getElementById("traversal-steps");
+        var sqlDiv = document.getElementById("query-sql-list");
+
+        // Render steps
+        stepsDiv.innerHTML = traversalPath.map(function (step) {
+            var borderColor = step.node_type === "entity" ? "#d29922" :
+                              step.node_type === "section" ? "#3fb950" : "#58a6ff";
+            var edgeInfo = step.edge_label
+                ? '<span style="color:#8b949e; font-size:11px;"> ' +
+                  (step.edge_direction === "reverse" ? "\u2190" : "\u2192") +
+                  " " + step.edge_label + "</span>"
+                : "";
+            return '<div style="padding:6px 8px; margin:4px 0; background:#0d1117; border-radius:6px; border-left:3px solid ' + borderColor + ';">' +
+                '<span style="color:#8b949e; font-size:11px;">' + step.step_number + ".</span> " +
+                '<span style="color:#e6edf3; font-size:12px;">[' + step.node_type + "] " + step.node_label + "</span>" +
+                edgeInfo +
+                '<div style="color:#8b949e; font-size:11px; margin-top:2px;">' + (step.reason || "") + "</div>" +
+                "</div>";
+        }).join("");
+
+        // Render SQL queries
+        if (graphQueries && graphQueries.length > 0) {
+            sqlDiv.innerHTML = graphQueries.map(function (gq) {
+                var ms = typeof gq.execution_ms === "number" ? gq.execution_ms.toFixed(1) : "?";
+                return '<div style="padding:8px; margin:4px 0; background:#0d1117; border-radius:6px;">' +
+                    '<div style="color:#58a6ff; font-size:12px; margin-bottom:4px;">' + (gq.purpose || "") + "</div>" +
+                    '<pre style="color:#8b949e; font-size:11px; margin:0; white-space:pre-wrap; word-break:break-all;">' + (gq.sql || "") + "</pre>" +
+                    '<div style="color:#3fb950; font-size:11px; margin-top:4px;">' + (gq.rows_returned || 0) + " rows in " + ms + "ms</div>" +
+                    "</div>";
+            }).join("");
+        } else {
+            sqlDiv.innerHTML = '<div style="color:#8b949e; font-size:12px;">No graph queries recorded</div>';
+        }
+
+        panel.style.display = "block";
+    }
+
+    function clearTraversalOverlay() {
+        nodeSel.classed("dimmed", false).classed("path-node", false);
+        linkSel.classed("dimmed", false).classed("path-edge", false);
+        if (svg.__container) {
+            svg.__container.selectAll(".step-badge").remove();
+        }
+        document.getElementById("traversal-panel").style.display = "none";
+        document.getElementById("clear-path-btn").style.display = "none";
+        document.getElementById("replay-btn").style.display = "none";
+        document.getElementById("query-answer").style.display = "none";
+    }
+
+    async function submitQuery() {
+        var input = document.getElementById("query-input");
+        var question = input.value.trim();
+        if (!question) return;
+
+        var btn = document.getElementById("query-btn");
+        btn.textContent = "Thinking...";
+        btn.disabled = true;
+
+        try {
+            var resp = await fetch("/api/query?q=" + encodeURIComponent(question));
+            var data = await resp.json();
+
+            // Show answer
+            var answerDiv = document.getElementById("query-answer");
+            answerDiv.textContent = data.answer || "No answer returned";
+            answerDiv.style.display = "block";
+
+            // Render traversal path
+            if (data.traversal_path && data.traversal_path.length > 0) {
+                renderTraversalPath(data.traversal_path, data.graph_queries || []);
+            }
+        } catch (err) {
+            console.error("Query failed:", err);
+        } finally {
+            btn.textContent = "Query";
+            btn.disabled = false;
         }
     }
 
