@@ -9,7 +9,7 @@ ollama:
 # Override via env vars: ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN
 oracle:
   user: "pageindex"
-  password: "pageindex"
+  password: "pageindex"  # pragma: allowlist secret
   dsn: "localhost:1521/FREEPDB1"
   pool_min: 1
   pool_max: 5
@@ -22,3 +22,11 @@ if_add_node_summary: "no"
 if_add_doc_description: "no"
 if_add_node_text: "no"
 if_extract_entities: "no"
+
+# Entity resolution configuration
+# Uses Oracle VECTOR_DISTANCE on name embeddings to find duplicate entities
+entity_resolution:
+  enabled: true
+  embedding_model: "nomic-embed-text"
+  similarity_threshold: 0.3
+  auto_confirm_threshold: 0.15

@@ -180,6 +180,53 @@ class GraphStore:
         """Return all entities as a list of dicts."""
         return self.db.fetchall("SELECT * FROM entities ORDER BY entity_id")
 
+    # ------------------------------------------------------------------
+    # Entity resolution methods
+    # ------------------------------------------------------------------
+
+    def find_similar_entities(self, embedding, entity_type, threshold, exclude_id=None):
+        """Find entities with similar name embeddings using VECTOR_DISTANCE."""
+        sql = """
+            SELECT entity_id, name, entity_type,
+                   VECTOR_DISTANCE(name_embedding, :embedding, COSINE) AS distance
+            FROM entities
+            WHERE entity_type = :entity_type
+              AND name_embedding IS NOT NULL
+              AND entity_id != :exclude_id
+              AND VECTOR_DISTANCE(name_embedding, :embedding, COSINE) < :threshold
+            ORDER BY distance
+            FETCH FIRST 5 ROWS ONLY
+        """
+        return self.db.fetchall(sql, {
+            "embedding": embedding,
+            "entity_type": entity_type,
+            "exclude_id": exclude_id or -1,
+            "threshold": threshold,
+        })
+
+    def insert_entity_alias(self, canonical_id, alias_id, similarity, confirmed=0):
+        """Create an alias_of edge between two entities."""
+        sql = """
+            INSERT INTO entity_aliases (canonical_id, alias_id, similarity, confirmed)
+            VALUES (:canonical_id, :alias_id, :similarity, :confirmed)
+        """
+        self.db.execute(sql, {
+            "canonical_id": canonical_id,
+            "alias_id": alias_id,
+            "similarity": similarity,
+            "confirmed": confirmed,
+        })
+
+    def update_entity_canonical(self, entity_id, canonical_id):
+        """Set the canonical_id for an entity (marks it as an alias)."""
+        sql = "UPDATE entities SET canonical_id = :canonical_id WHERE entity_id = :entity_id"
+        self.db.execute(sql, {"canonical_id": canonical_id, "entity_id": entity_id})
+
+    def update_entity_embedding(self, entity_id, embedding):
+        """Store the name embedding vector for an entity."""
+        sql = "UPDATE entities SET name_embedding = :embedding WHERE entity_id = :entity_id"
+        self.db.execute(sql, {"embedding": embedding, "entity_id": entity_id})
+
     def get_entity_sections(self, entity_name):
         """Return all sections that mention an entity (by entity name), with document info.
 
