@@ -10,6 +10,7 @@ import asyncio
 import logging
 
 from .entity_extractor import EntityExtractor
+from .entity_resolver import EntityResolver
 from .graph import GraphStore
 from .parser import DocumentParser
 
@@ -46,6 +47,13 @@ class Indexer:
         self.extract_entities = getattr(opt, "if_extract_entities", "yes") == "yes"
         self.extractor = EntityExtractor(llm=llm)
         self.graph = GraphStore(db=db)
+
+        # Entity resolution (optional, based on config)
+        er_config = getattr(opt, "entity_resolution", None)
+        if er_config and isinstance(er_config, dict):
+            self.resolver = EntityResolver(self.llm, self.graph, er_config)
+        else:
+            self.resolver = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -154,6 +162,15 @@ class Indexer:
                     )
 
             logger.info(f"Upserted {len(unique_entities)} unique entity/entities")
+
+            # -- Step 5b: Entity resolution (optional) ---------------------
+            new_entity_ids = [e["entity_id"] for e in unique_entities]
+            if self.resolver and new_entity_ids:
+                logger.info(f"Running entity resolution on {len(new_entity_ids)} entities...")
+                resolution_stats = self.resolver.resolve_all_new_entities(new_entity_ids)
+                logger.info(
+                    f"Entity resolution: {resolution_stats['resolved']}/{resolution_stats['total']} resolved"
+                )
 
             # -- Step 6: Extract and store inter-entity relationships -------
             if len(unique_entities) >= 2:
