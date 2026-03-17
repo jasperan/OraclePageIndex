@@ -1,8 +1,10 @@
-"""Graph-powered query engine combining SQL/PGQ graph traversal with Ollama reasoning."""
+"""Graph-powered query engine combining intent classification, multi-hop
+SQL/PGQ graph traversal, and Ollama reasoning."""
 
 import logging
 
 from .llm import OllamaError
+from .models import GraphQuery, QueryIntent, QueryResult, TraversalStep
 from .utils import count_tokens
 
 logger = logging.getLogger(__name__)
@@ -14,28 +16,20 @@ MAX_QUERY_LENGTH = 5_000
 
 
 class QueryEngine:
-    """Answer questions by retrieving context from the document knowledge graph
-    and reasoning over it with an LLM.
+    """Answer questions by classifying intent, traversing the document
+    knowledge graph via multi-hop SQL/PGQ queries, and reasoning over
+    the assembled context with an LLM.
 
     Workflow:
-        1. Extract key concepts from the question via Ollama.
-        2. Look up graph entities matching those concepts (batch lookup).
-        3. Retrieve relevant sections (with fallback to title substring matching).
-        4. Enrich context with related entities from the graph.
-        5. Build a token-budgeted markdown context block and send it to Ollama.
+        1. Classify the question's intent and extract entities via Ollama.
+        2. Resolve entity names to graph IDs.
+        3. Dispatch to intent-specific traversal strategies.
+        4. Fall back to title substring search when traversal yields nothing.
+        5. Build a token-budgeted markdown context block.
+        6. Reason over the context with Ollama.
+        7. Return a QueryResult dataclass with answer, sources, traversal
+           metadata, and the SQL/PGQ queries that were executed.
     """
-
-    CONCEPT_EXTRACTION_PROMPT = (
-        "Extract the key concepts from the following question. "
-        "Return ONLY a JSON array of strings, nothing else. "
-        "Each string should be a single concept or entity mentioned in the question.\n\n"
-        "Examples:\n"
-        '  Question: "What is Apple\'s revenue?" -> ["Apple", "revenue"]\n'
-        '  Question: "How does X relate to Y?" -> ["X", "Y"]\n'
-        '  Question: "What are the main risk factors?" -> ["risk factors"]\n\n'
-        "Question: {question}\n\n"
-        "JSON array:"
-    )
 
     REASONING_SYSTEM_PROMPT = (
         "You are a knowledgeable assistant that answers questions based on "
@@ -58,78 +52,85 @@ class QueryEngine:
         self.llm = llm
         self.graph = graph
 
-    def query(self, question: str) -> dict:
-        """Answer a question using graph-retrieved context and LLM reasoning.
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def query(self, question: str, session_id: int | None = None) -> QueryResult:
+        """Answer a question using intent-driven graph traversal and LLM reasoning.
 
         Args:
             question: The user's natural language question (max 5000 chars).
+            session_id: Optional conversation session ID (stub, wired in Task 10).
 
         Returns:
-            dict with keys: answer, sources, concepts, related_entities.
+            QueryResult dataclass with answer, sources, traversal path, etc.
         """
         if len(question) > MAX_QUERY_LENGTH:
             question = question[:MAX_QUERY_LENGTH]
 
-        # Step 1: Extract concepts from the question
-        concepts = self._extract_query_concepts(question)
-        logger.info(f"Extracted concepts: {concepts}")
+        # Step 1: Classify intent and extract entities
+        intent, entity_names = self.llm.classify_intent(question)
+        logger.info(f"Intent: {intent.value}, Entities: {entity_names}")
 
-        if not concepts:
-            return {
-                "answer": "I could not extract any concepts from the question. Please rephrase.",
-                "sources": [],
-                "concepts": [],
-                "related_entities": [],
-            }
+        if not entity_names:
+            return QueryResult(
+                answer="I could not extract any concepts from the question. Please rephrase.",
+                sources=[],
+                concepts=[],
+                session_id=session_id,
+            )
 
-        # Step 2: Find sections that mention the extracted entities (batch)
-        sections_by_id = {}
-        for concept in concepts:
-            entity_sections = self.graph.get_entity_sections(concept)
-            for sec in entity_sections:
-                sid = sec["section_id"]
-                if sid not in sections_by_id:
-                    sections_by_id[sid] = sec
+        # Step 2: Resolve entity names to graph records (with IDs)
+        resolved = self._resolve_entity_ids(entity_names)
 
-        # Step 3: Fallback — title substring match across all documents
+        # Step 3: Dispatch by intent
+        graph_queries: list[GraphQuery] = []
+        traversal_steps: list[TraversalStep] = []
+        sections_by_id: dict[int, dict] = {}
+        all_related: list[dict] = []
+
+        if resolved:
+            sections_by_id, all_related, graph_queries, traversal_steps = (
+                self._dispatch_by_intent(intent, entity_names, resolved)
+            )
+
+        # Step 4: Fallback to entity-section LIKE matching
+        if not sections_by_id and resolved:
+            for ent in resolved:
+                ent_name = ent.get("name", "")
+                for sec in self.graph.get_entity_sections(ent_name):
+                    sid = sec["section_id"]
+                    if sid not in sections_by_id:
+                        sections_by_id[sid] = sec
+
+        # Step 5: Fallback to title substring search
         if not sections_by_id:
             logger.info("No entity matches found, falling back to title substring search")
-            sections_by_id = self._fallback_title_search(concepts)
+            sections_by_id = self._fallback_title_search(entity_names)
 
-        # Step 4: If still nothing, return early
+        # Step 6: If still nothing, return early
         if not sections_by_id:
-            return {
-                "answer": (
+            return QueryResult(
+                answer=(
                     "No relevant information found in the knowledge graph "
                     "for the given question. Try rephrasing or using different terms."
                 ),
-                "sources": [],
-                "concepts": concepts,
-                "related_entities": [],
-            }
+                sources=[],
+                concepts=entity_names,
+                graph_queries=graph_queries,
+                traversal_path=traversal_steps,
+                session_id=session_id,
+            )
 
-        # Step 5: Gather related entities for context enrichment
-        all_related = []
-        seen_related = set()
-        for concept in concepts:
-            related = self.graph.get_related_entities(concept)
-            for rel in related:
-                rel_key = (rel.get("name") or rel.get("related_name", ""),
-                           rel.get("relationship", ""))
-                if rel_key not in seen_related:
-                    seen_related.add(rel_key)
-                    all_related.append(rel)
-
-        # Step 6: Build the context string (with token budget)
+        # Step 7: Build context and reason
         sections_list = list(sections_by_id.values())
         context = self._build_context(sections_list, all_related)
-
-        # Step 7: Reason over the context
         answer = self._reason(question, context)
 
-        # Build sources list
+        # Build sources list (deduplicated)
         sources = []
-        seen_sources = set()
+        seen_sources: set[tuple[str, str]] = set()
         for sec in sections_list:
             title = sec.get("title") or sec.get("section_title", "Untitled")
             doc_name = sec.get("doc_name", "Unknown")
@@ -138,45 +139,292 @@ class QueryEngine:
                 seen_sources.add(source_key)
                 sources.append({"title": title, "doc_name": doc_name})
 
-        return {
-            "answer": answer,
-            "sources": sources,
-            "concepts": concepts,
-            "related_entities": [
-                {
-                    "name": r.get("name") or r.get("related_name", ""),
-                    "type": r.get("entity_type") or r.get("related_type", ""),
-                    "relationship": r.get("relationship", "RELATED_TO"),
-                }
-                for r in all_related
-            ],
-        }
+        # Build related entities output
+        related_out = [
+            {
+                "name": r.get("name") or r.get("related_name", ""),
+                "type": r.get("entity_type") or r.get("related_type", ""),
+                "relationship": r.get("relationship", "RELATED_TO"),
+            }
+            for r in all_related
+        ]
 
-    def _extract_query_concepts(self, question: str) -> list[str]:
-        """Ask the LLM to extract key concepts from the question."""
-        prompt = self.CONCEPT_EXTRACTION_PROMPT.format(question=question)
-        try:
-            raw_response = self.llm.chat(prompt)
-        except OllamaError:
-            logger.error("LLM failed to extract concepts")
-            return []
+        return QueryResult(
+            answer=answer,
+            sources=sources,
+            concepts=entity_names,
+            related_entities=related_out,
+            graph_queries=graph_queries,
+            traversal_path=traversal_steps,
+            session_id=session_id,
+        )
 
-        parsed = self.llm.extract_json(raw_response)
+    # ------------------------------------------------------------------
+    # Intent dispatch
+    # ------------------------------------------------------------------
 
-        if isinstance(parsed, list):
-            return [str(c).strip() for c in parsed if c]
-        elif isinstance(parsed, dict):
-            for value in parsed.values():
-                if isinstance(value, list):
-                    return [str(c).strip() for c in value if c]
-            return []
-        else:
-            logger.warning(f"Unexpected concept extraction result type: {type(parsed)}")
-            return []
+    def _dispatch_by_intent(
+        self,
+        intent: QueryIntent,
+        entity_names: list[str],
+        resolved: list[dict],
+    ) -> tuple[dict, list[dict], list[GraphQuery], list[TraversalStep]]:
+        """Route to the correct traversal strategy based on classified intent."""
+        handler = {
+            QueryIntent.LOOKUP: self._handle_lookup,
+            QueryIntent.RELATIONSHIP: self._handle_relationship,
+            QueryIntent.EXPLORATION: self._handle_exploration,
+            QueryIntent.COMPARISON: self._handle_comparison,
+            QueryIntent.HIERARCHICAL: self._handle_hierarchical,
+            QueryIntent.TEMPORAL: self._handle_exploration,  # placeholder, falls back to exploration
+        }.get(intent, self._handle_exploration)
+
+        return handler(entity_names, resolved)
+
+    # ------------------------------------------------------------------
+    # Intent handlers
+    # ------------------------------------------------------------------
+
+    def _handle_lookup(
+        self, entity_names: list[str], resolved: list[dict]
+    ) -> tuple[dict, list[dict], list[GraphQuery], list[TraversalStep]]:
+        """LOOKUP: traverse entity neighborhood for each resolved entity."""
+        sections_by_id: dict[int, dict] = {}
+        all_related: list[dict] = []
+        graph_queries: list[GraphQuery] = []
+        traversal_steps: list[TraversalStep] = []
+        step_num = 0
+
+        for ent in resolved:
+            eid = ent["entity_id"]
+            result = self.graph.traverse_entity_neighborhood(eid)
+            gq = result.get("graph_query")
+            if gq:
+                graph_queries.append(gq)
+
+            for sec in result.get("sections", []):
+                sid = sec["section_id"]
+                if sid not in sections_by_id:
+                    sections_by_id[sid] = sec
+                    step_num += 1
+                    traversal_steps.append(TraversalStep(
+                        step_number=step_num,
+                        node_type="section",
+                        node_id=sid,
+                        node_label=sec.get("title", ""),
+                        edge_label="mentions",
+                        edge_direction="inbound",
+                        reason=f"Section mentions entity '{ent.get('name', '')}'",
+                    ))
+
+            for co_ent in result.get("entities", []):
+                all_related.append(co_ent)
+
+        return sections_by_id, all_related, graph_queries, traversal_steps
+
+    def _handle_relationship(
+        self, entity_names: list[str], resolved: list[dict]
+    ) -> tuple[dict, list[dict], list[GraphQuery], list[TraversalStep]]:
+        """RELATIONSHIP: find paths between entity pairs + neighborhood for each."""
+        sections_by_id: dict[int, dict] = {}
+        all_related: list[dict] = []
+        graph_queries: list[GraphQuery] = []
+        traversal_steps: list[TraversalStep] = []
+        step_num = 0
+
+        # Path finding between pairs
+        if len(resolved) >= 2:
+            for i in range(len(resolved) - 1):
+                src_name = resolved[i].get("name", "")
+                tgt_name = resolved[i + 1].get("name", "")
+                path_result = self.graph.find_entity_paths(src_name, tgt_name)
+                gq = path_result.get("graph_query")
+                if gq:
+                    graph_queries.append(gq)
+
+                for path in path_result.get("paths", []):
+                    mid_name = path.get("mid_name", "")
+                    step_num += 1
+                    traversal_steps.append(TraversalStep(
+                        step_number=step_num,
+                        node_type="entity",
+                        node_id=path.get("mid_id", 0),
+                        node_label=mid_name,
+                        edge_label=path.get("r1_type", "RELATED_TO"),
+                        edge_direction="outbound",
+                        reason=f"Path: {src_name} -> {mid_name} -> {tgt_name}",
+                    ))
+
+        # Also get neighborhood for each entity
+        for ent in resolved:
+            eid = ent["entity_id"]
+            result = self.graph.traverse_entity_neighborhood(eid)
+            gq = result.get("graph_query")
+            if gq:
+                graph_queries.append(gq)
+
+            for sec in result.get("sections", []):
+                sid = sec["section_id"]
+                if sid not in sections_by_id:
+                    sections_by_id[sid] = sec
+
+            for co_ent in result.get("entities", []):
+                all_related.append(co_ent)
+
+        return sections_by_id, all_related, graph_queries, traversal_steps
+
+    def _handle_exploration(
+        self, entity_names: list[str], resolved: list[dict]
+    ) -> tuple[dict, list[dict], list[GraphQuery], list[TraversalStep]]:
+        """EXPLORATION / TEMPORAL: neighborhood + multi-hop expansion."""
+        sections_by_id: dict[int, dict] = {}
+        all_related: list[dict] = []
+        graph_queries: list[GraphQuery] = []
+        traversal_steps: list[TraversalStep] = []
+        step_num = 0
+
+        for ent in resolved:
+            eid = ent["entity_id"]
+
+            # Neighborhood traversal
+            nbr = self.graph.traverse_entity_neighborhood(eid)
+            gq = nbr.get("graph_query")
+            if gq:
+                graph_queries.append(gq)
+
+            for sec in nbr.get("sections", []):
+                sid = sec["section_id"]
+                if sid not in sections_by_id:
+                    sections_by_id[sid] = sec
+                    step_num += 1
+                    traversal_steps.append(TraversalStep(
+                        step_number=step_num,
+                        node_type="section",
+                        node_id=sid,
+                        node_label=sec.get("title", ""),
+                        edge_label="mentions",
+                        edge_direction="inbound",
+                        reason=f"Section mentions entity '{ent.get('name', '')}'",
+                    ))
+
+            for co_ent in nbr.get("entities", []):
+                all_related.append(co_ent)
+
+            # Multi-hop expansion for broader reach
+            multi = self.graph.get_multi_hop_entities(eid)
+            gq2 = multi.get("graph_query")
+            if gq2:
+                graph_queries.append(gq2)
+
+            for mh_ent in multi.get("entities", []):
+                step_num += 1
+                traversal_steps.append(TraversalStep(
+                    step_number=step_num,
+                    node_type="entity",
+                    node_id=mh_ent.get("entity_id", 0),
+                    node_label=mh_ent.get("name", ""),
+                    edge_label=mh_ent.get("relationship", "RELATED_TO"),
+                    edge_direction="outbound",
+                    reason=f"Multi-hop entity from '{ent.get('name', '')}'",
+                ))
+                all_related.append(mh_ent)
+
+        return sections_by_id, all_related, graph_queries, traversal_steps
+
+    def _handle_comparison(
+        self, entity_names: list[str], resolved: list[dict]
+    ) -> tuple[dict, list[dict], list[GraphQuery], list[TraversalStep]]:
+        """COMPARISON: separate neighborhood per entity, then combine."""
+        sections_by_id: dict[int, dict] = {}
+        all_related: list[dict] = []
+        graph_queries: list[GraphQuery] = []
+        traversal_steps: list[TraversalStep] = []
+        step_num = 0
+
+        for ent in resolved:
+            eid = ent["entity_id"]
+            result = self.graph.traverse_entity_neighborhood(eid)
+            gq = result.get("graph_query")
+            if gq:
+                graph_queries.append(gq)
+
+            for sec in result.get("sections", []):
+                sid = sec["section_id"]
+                if sid not in sections_by_id:
+                    sections_by_id[sid] = sec
+                    step_num += 1
+                    traversal_steps.append(TraversalStep(
+                        step_number=step_num,
+                        node_type="section",
+                        node_id=sid,
+                        node_label=sec.get("title", ""),
+                        edge_label="mentions",
+                        edge_direction="inbound",
+                        reason=f"Comparison context for '{ent.get('name', '')}'",
+                    ))
+
+            for co_ent in result.get("entities", []):
+                all_related.append(co_ent)
+
+        return sections_by_id, all_related, graph_queries, traversal_steps
+
+    def _handle_hierarchical(
+        self, entity_names: list[str], resolved: list[dict]
+    ) -> tuple[dict, list[dict], list[GraphQuery], list[TraversalStep]]:
+        """HIERARCHICAL: find sections via entities, then traverse descendants."""
+        sections_by_id: dict[int, dict] = {}
+        all_related: list[dict] = []
+        graph_queries: list[GraphQuery] = []
+        traversal_steps: list[TraversalStep] = []
+        step_num = 0
+
+        for ent in resolved:
+            ent_name = ent.get("name", "")
+            ent_sections = self.graph.get_entity_sections(ent_name)
+
+            for sec in ent_sections:
+                sid = sec["section_id"]
+                if sid not in sections_by_id:
+                    sections_by_id[sid] = sec
+
+                # Traverse descendants of each matched section
+                descendants = self.graph.traverse_section_descendants(sid)
+                for desc in descendants:
+                    desc_id = desc["section_id"]
+                    if desc_id not in sections_by_id:
+                        sections_by_id[desc_id] = desc
+                        step_num += 1
+                        traversal_steps.append(TraversalStep(
+                            step_number=step_num,
+                            node_type="section",
+                            node_id=desc_id,
+                            node_label=desc.get("title", ""),
+                            edge_label="parent_of",
+                            edge_direction="outbound",
+                            reason=f"Descendant of section '{sec.get('title', '')}'",
+                        ))
+
+        return sections_by_id, all_related, graph_queries, traversal_steps
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _resolve_entity_ids(self, entity_names: list[str]) -> list[dict]:
+        """Resolve entity name strings to entity records with IDs."""
+        resolved = []
+        all_entities = self.graph.get_all_entities()
+        for name in entity_names:
+            name_lower = name.lower()
+            for ent in all_entities:
+                if name_lower in ent.get("name", "").lower():
+                    resolved.append(ent)
+                    break
+        return resolved
 
     def _fallback_title_search(self, concepts: list[str]) -> dict:
         """Search all document sections for titles containing any of the concepts."""
-        sections_by_id = {}
+        sections_by_id: dict[int, dict] = {}
         documents = self.graph.get_all_documents()
         concepts_lower = [c.lower() for c in concepts]
 
