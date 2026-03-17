@@ -74,7 +74,11 @@ def cmd_index(args):
     )
     try:
         indexer = Indexer(llm=llm, db=db, opt=cfg)
-        stats = indexer.index_pdf(args.file)
+        stats = indexer.index_pdf(
+            args.file,
+            doc_group=getattr(args, "doc_group", None),
+            doc_version=getattr(args, "doc_version", 1),
+        )
         print("Indexing complete.")
         print(f"  Document:      {stats.get('doc_name', 'N/A')}")
         print(f"  Sections:      {stats.get('sections', 0)}")
@@ -212,6 +216,14 @@ def build_parser():
     # --- index ---
     p_index = sub.add_parser("index", help="Index a PDF document.")
     p_index.add_argument("file", type=str, help="Path to the PDF file to index.")
+    p_index.add_argument(
+        "--doc-group", type=str, default=None,
+        help="Document group for temporal versioning (e.g. 'apple-10k').",
+    )
+    p_index.add_argument(
+        "--doc-version", type=int, default=1,
+        help="Version number within the document group (default: 1).",
+    )
 
     # --- query ---
     p_query = sub.add_parser("query", help="Query the knowledge graph.")

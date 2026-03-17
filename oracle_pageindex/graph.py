@@ -21,11 +21,27 @@ class GraphStore:
     # Insert methods
     # ------------------------------------------------------------------
 
-    def insert_document(self, doc_name, doc_description, source_path):
-        """Insert a document vertex and return its doc_id."""
+    def insert_document(self, doc_name, doc_description, source_path,
+                        doc_group=None, doc_version=1):
+        """Insert a document vertex and return its doc_id.
+
+        Parameters
+        ----------
+        doc_name : str
+            Human-readable document name.
+        doc_description : str
+            Short description of the document.
+        source_path : str
+            Filesystem path to the source PDF.
+        doc_group : str | None
+            Optional group identifier for temporal versioning (e.g. "apple-10k").
+            Documents in the same group are treated as successive versions.
+        doc_version : int
+            Version number within the group (default 1).
+        """
         sql = """
-            INSERT INTO documents (doc_name, doc_description, source_path)
-            VALUES (:doc_name, :doc_description, :source_path)
+            INSERT INTO documents (doc_name, doc_description, source_path, doc_group, doc_version)
+            VALUES (:doc_name, :doc_description, :source_path, :doc_group, :doc_version)
             RETURNING doc_id INTO :out_id
         """
         doc_id = self.db.execute_returning(
@@ -34,10 +50,14 @@ class GraphStore:
                 "doc_name": doc_name,
                 "doc_description": doc_description,
                 "source_path": source_path,
+                "doc_group": doc_group,
+                "doc_version": doc_version,
             },
             returning_col="id",
         )
-        logger.info(f"Inserted document '{doc_name}' with doc_id={doc_id}")
+        logger.info(
+            f"Inserted document '{doc_name}' (group={doc_group}, v{doc_version}) with doc_id={doc_id}"
+        )
         return doc_id
 
     def insert_section(
@@ -665,6 +685,63 @@ class GraphStore:
         self.db.execute(sql, {
             "source_id": source_id, "target_id": target_id,
             "relationship": relationship, "confidence": confidence,
+        })
+
+    # ------------------------------------------------------------------
+    # Temporal versioning methods
+    # ------------------------------------------------------------------
+
+    def get_previous_version(self, doc_group, current_version):
+        """Get the document record for the version before current_version in a group."""
+        sql = """
+            SELECT doc_id, doc_name, doc_version
+            FROM documents
+            WHERE doc_group = :doc_group AND doc_version = :prev_version
+        """
+        return self.db.fetchone(sql, {"doc_group": doc_group, "prev_version": current_version - 1})
+
+    def get_doc_entities(self, doc_id):
+        """Get all entities mentioned in a document's sections."""
+        sql = """
+            SELECT DISTINCT e.entity_id, e.name, e.entity_type
+            FROM entities e
+            JOIN section_entities se ON se.entity_id = e.entity_id
+            JOIN sections s ON s.section_id = se.section_id
+            WHERE s.doc_id = :doc_id
+            ORDER BY e.name
+        """
+        return self.db.fetchall(sql, {"doc_id": doc_id})
+
+    def insert_temporal_edge(self, source_doc_id, target_doc_id, entity_id,
+                             change_type, old_value=None, new_value=None, confidence=1.0):
+        """Create a temporal change edge between two document versions."""
+        sql = """
+            INSERT INTO temporal_edges
+                (source_doc_id, target_doc_id, entity_id, change_type, old_value, new_value, confidence)
+            VALUES (:src, :tgt, :eid, :change_type, :old_value, :new_value, :confidence)
+        """
+        self.db.execute(sql, {
+            "src": source_doc_id, "tgt": target_doc_id, "eid": entity_id,
+            "change_type": change_type, "old_value": old_value,
+            "new_value": new_value, "confidence": confidence,
+        })
+
+    def get_temporal_changes(self, doc_group, version_from, version_to):
+        """Get all temporal changes between two versions of a document group."""
+        sql = """
+            SELECT te.edge_id, te.entity_id, e.name, e.entity_type,
+                   te.change_type, te.old_value, te.new_value, te.confidence
+            FROM temporal_edges te
+            JOIN documents d1 ON d1.doc_id = te.source_doc_id
+            JOIN documents d2 ON d2.doc_id = te.target_doc_id
+            LEFT JOIN entities e ON e.entity_id = te.entity_id
+            WHERE d1.doc_group = :doc_group
+              AND d1.doc_version = :v_from
+              AND d2.doc_version = :v_to
+            ORDER BY te.change_type, e.name
+        """
+        return self.db.fetchall(sql, {
+            "doc_group": doc_group, "v_from": version_from, "v_to": version_to,
         })
 
     # ------------------------------------------------------------------

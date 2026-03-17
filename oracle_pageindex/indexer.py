@@ -51,7 +51,7 @@ class Indexer:
     # Public API
     # ------------------------------------------------------------------
 
-    def index_pdf(self, pdf_path):
+    def index_pdf(self, pdf_path, doc_group=None, doc_version=1):
         """Run the full indexing pipeline on a PDF.
 
         Steps:
@@ -62,11 +62,18 @@ class Indexer:
             4. Extract entities for every section via the LLM.
             5. Upsert entities and create mention edges.
             6. Extract inter-entity relationships and store them.
+            7. If doc_group is set, compute temporal diff against previous version.
 
         Parameters
         ----------
         pdf_path : str
             Path to the PDF file to index.
+        doc_group : str | None
+            Optional group identifier for temporal versioning. Documents in
+            the same group are treated as successive versions of a single
+            logical document (e.g. "apple-10k").
+        doc_version : int
+            Version number within the group (default 1).
 
         Returns
         -------
@@ -88,6 +95,8 @@ class Indexer:
             doc_name=doc_name,
             doc_description=doc_description,
             source_path=str(pdf_path),
+            doc_group=doc_group,
+            doc_version=doc_version,
         )
         logger.info(f"Created document vertex: doc_id={doc_id}")
 
@@ -183,6 +192,10 @@ class Indexer:
         else:
             logger.info("Skipping entity extraction (disabled in config)")
 
+        # -- Step 7: Temporal diff (if versioned) --------------------------
+        if doc_group:
+            self._compute_temporal_diff(doc_id, doc_group, doc_version)
+
         # -- Build stats and return ----------------------------------------
         stats = {
             "doc_id": doc_id,
@@ -193,6 +206,57 @@ class Indexer:
         }
         logger.info(f"Indexing complete: {stats}")
         return stats
+
+    # ------------------------------------------------------------------
+    # Internal: temporal versioning
+    # ------------------------------------------------------------------
+
+    def _compute_temporal_diff(self, doc_id, doc_group, doc_version):
+        """Compare entities between current and previous document version.
+
+        For each entity, inserts a temporal edge with change_type:
+        - APPEARED: entity exists in current but not previous version.
+        - DISAPPEARED: entity existed in previous but not current version.
+        - STABLE: entity present in both versions.
+        """
+        prev = self.graph.get_previous_version(doc_group, doc_version)
+        if not prev:
+            logger.info("No previous version found, skipping temporal diff")
+            return
+
+        prev_entities = {
+            (e["name"], e["entity_type"]) for e in self.graph.get_doc_entities(prev["doc_id"])
+        }
+        curr_entities = {
+            (e["name"], e["entity_type"]) for e in self.graph.get_doc_entities(doc_id)
+        }
+
+        # Map name+type back to entity records for IDs
+        all_entities = self.graph.get_all_entities()
+        entity_map = {(e["name"], e["entity_type"]): e["entity_id"] for e in all_entities}
+
+        appeared = curr_entities - prev_entities
+        disappeared = prev_entities - curr_entities
+        stable = curr_entities & prev_entities
+
+        prev_doc_id = prev["doc_id"]
+
+        for name, etype in appeared:
+            eid = entity_map.get((name, etype))
+            self.graph.insert_temporal_edge(prev_doc_id, doc_id, eid, "APPEARED")
+
+        for name, etype in disappeared:
+            eid = entity_map.get((name, etype))
+            self.graph.insert_temporal_edge(prev_doc_id, doc_id, eid, "DISAPPEARED")
+
+        for name, etype in stable:
+            eid = entity_map.get((name, etype))
+            self.graph.insert_temporal_edge(prev_doc_id, doc_id, eid, "STABLE")
+
+        logger.info(
+            f"Temporal diff: {len(appeared)} appeared, {len(disappeared)} disappeared, "
+            f"{len(stable)} stable"
+        )
 
     # ------------------------------------------------------------------
     # Internal: recursive tree insertion
