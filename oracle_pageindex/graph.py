@@ -1,4 +1,7 @@
 import logging
+import time
+
+from oracle_pageindex.models import GraphQuery
 
 logger = logging.getLogger(__name__)
 
@@ -355,3 +358,199 @@ class GraphStore:
             ORDER BY s.depth_level, s.section_id
         """
         return self.db.fetchall(sql, {"section_title": section_title})
+
+    # ------------------------------------------------------------------
+    # Multi-hop GRAPH_TABLE traversal methods
+    # ------------------------------------------------------------------
+
+    def traverse_entity_neighborhood(self, entity_id: int) -> dict:
+        """Find all sections mentioning an entity and co-mentioned entities in those sections.
+
+        Uses GRAPH_TABLE MATCH to traverse: entity <- mentions - section - mentions -> entity.
+        Deduplicates sections and entities from the flat row set.
+        """
+        sql = """
+            SELECT s.section_id, s.title, s.text_content, s.depth_level,
+                   m.relevance,
+                   e2.entity_id AS co_entity_id, e2.name AS co_entity_name,
+                   e2.entity_type AS co_entity_type
+            FROM GRAPH_TABLE (doc_knowledge_graph
+                MATCH (e1 IS entity WHERE e1.entity_id = :entity_id)
+                      <-[m IS mentions]- (s IS section)
+                      -[m2 IS mentions]-> (e2 IS entity)
+                COLUMNS (
+                    s.section_id, s.title, s.text_content, s.depth_level,
+                    m.relevance,
+                    e2.entity_id AS co_entity_id, e2.name AS co_entity_name,
+                    e2.entity_type AS co_entity_type
+                )
+            )
+            WHERE co_entity_id != :entity_id
+        """
+        params = {"entity_id": entity_id}
+        t0 = time.perf_counter()
+        rows = self.db.fetchall(sql, params)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+
+        # Deduplicate sections by section_id
+        seen_sections = {}
+        for row in rows:
+            sid = row["section_id"]
+            if sid not in seen_sections:
+                seen_sections[sid] = {
+                    "section_id": sid,
+                    "title": row["title"],
+                    "text_content": row["text_content"],
+                    "depth_level": row["depth_level"],
+                    "relevance": row["relevance"],
+                }
+
+        # Deduplicate entities by entity_id
+        seen_entities = {}
+        for row in rows:
+            eid = row["co_entity_id"]
+            if eid not in seen_entities:
+                seen_entities[eid] = {
+                    "entity_id": eid,
+                    "name": row["co_entity_name"],
+                    "entity_type": row["co_entity_type"],
+                }
+
+        gq = GraphQuery(
+            sql=sql,
+            params=params,
+            purpose="Find sections mentioning entity and co-mentioned entities",
+            rows_returned=len(rows),
+            execution_ms=elapsed_ms,
+        )
+        return {
+            "sections": list(seen_sections.values()),
+            "entities": list(seen_entities.values()),
+            "graph_query": gq,
+        }
+
+    def traverse_section_ancestors(self, section_id: int) -> list[dict]:
+        """Find all ancestors of a section using recursive CONNECT BY traversal.
+
+        Returns ancestors ordered from root (topmost) down to the immediate parent.
+        """
+        sql = """
+            SELECT s.section_id, s.title, s.depth_level, LEVEL AS tree_level
+            FROM section_hierarchy h
+            JOIN sections s ON s.section_id = h.parent_id
+            START WITH h.child_id = :section_id
+            CONNECT BY PRIOR h.parent_id = h.child_id
+            ORDER BY LEVEL DESC
+        """
+        params = {"section_id": section_id}
+        t0 = time.perf_counter()
+        rows = self.db.fetchall(sql, params)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        logger.debug(
+            f"traverse_section_ancestors({section_id}): {len(rows)} ancestors in {elapsed_ms:.1f}ms"
+        )
+        return rows
+
+    def traverse_section_descendants(self, section_id: int) -> list[dict]:
+        """Find all descendants of a section using recursive CONNECT BY traversal.
+
+        Returns descendants ordered by tree level then section_id.
+        """
+        sql = """
+            SELECT s.section_id, s.title, s.depth_level, LEVEL AS tree_level
+            FROM section_hierarchy h
+            JOIN sections s ON s.section_id = h.child_id
+            START WITH h.parent_id = :section_id
+            CONNECT BY PRIOR h.child_id = h.parent_id
+            ORDER BY LEVEL, s.section_id
+        """
+        params = {"section_id": section_id}
+        t0 = time.perf_counter()
+        rows = self.db.fetchall(sql, params)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        logger.debug(
+            f"traverse_section_descendants({section_id}): {len(rows)} descendants in {elapsed_ms:.1f}ms"
+        )
+        return rows
+
+    def find_entity_paths(self, source_name: str, target_name: str, max_hops: int = 2) -> dict:
+        """Find paths between two entities through intermediate entities (2-hop).
+
+        Uses GRAPH_TABLE MATCH to traverse: source -[r1]-> mid -[r2]-> target.
+        """
+        sql = """
+            SELECT e1.name AS source_name,
+                   mid.entity_id AS mid_id, mid.name AS mid_name, mid.entity_type AS mid_type,
+                   r1.relationship AS r1_type,
+                   e2.name AS target_name,
+                   r2.relationship AS r2_type
+            FROM GRAPH_TABLE (doc_knowledge_graph
+                MATCH (e1 IS entity WHERE LOWER(e1.name) LIKE '%' || LOWER(:source_name) || '%')
+                      -[r1 IS related_to]-> (mid IS entity)
+                      -[r2 IS related_to]-> (e2 IS entity WHERE LOWER(e2.name) LIKE '%' || LOWER(:target_name) || '%')
+                COLUMNS (
+                    e1.name, mid.entity_id, mid.name, mid.entity_type,
+                    r1.relationship, e2.name, r2.relationship
+                )
+            )
+            FETCH FIRST 10 ROWS ONLY
+        """
+        params = {"source_name": source_name, "target_name": target_name}
+        t0 = time.perf_counter()
+        rows = self.db.fetchall(sql, params)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+
+        gq = GraphQuery(
+            sql=sql,
+            params=params,
+            purpose=f"Find paths from '{source_name}' to '{target_name}' via intermediate entities",
+            rows_returned=len(rows),
+            execution_ms=elapsed_ms,
+        )
+        return {"paths": rows, "graph_query": gq}
+
+    def get_multi_hop_entities(self, entity_id: int, max_hops: int = 2) -> dict:
+        """N-hop entity expansion via GRAPH_TABLE MATCH.
+
+        Gets all entities within N relationship hops of the given entity.
+        For max_hops=1, uses a single-hop query. For max_hops>=2, UNIONs
+        1-hop and 2-hop results.
+        """
+        sql_1hop = """
+            SELECT e2.entity_id, e2.name, e2.entity_type, r.relationship, 1 AS hops
+            FROM GRAPH_TABLE (doc_knowledge_graph
+                MATCH (e1 IS entity WHERE e1.entity_id = :entity_id)
+                      -[r IS related_to]-> (e2 IS entity)
+                COLUMNS (e2.entity_id, e2.name, e2.entity_type, r.relationship)
+            )
+        """
+
+        if max_hops >= 2:
+            sql_2hop = """
+            UNION
+            SELECT e3.entity_id, e3.name, e3.entity_type, r2.relationship, 2 AS hops
+            FROM GRAPH_TABLE (doc_knowledge_graph
+                MATCH (e1 IS entity WHERE e1.entity_id = :entity_id)
+                      -[r1 IS related_to]-> (mid IS entity)
+                      -[r2 IS related_to]-> (e3 IS entity)
+                COLUMNS (e3.entity_id, e3.name, e3.entity_type, r2.relationship)
+            )
+            WHERE e3.entity_id != :entity_id
+            """
+            sql = sql_1hop + sql_2hop
+        else:
+            sql = sql_1hop
+
+        params = {"entity_id": entity_id}
+        t0 = time.perf_counter()
+        rows = self.db.fetchall(sql, params)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+
+        gq = GraphQuery(
+            sql=sql,
+            params=params,
+            purpose=f"Find entities within {max_hops} hops of entity {entity_id}",
+            rows_returned=len(rows),
+            execution_ms=elapsed_ms,
+        )
+        return {"entities": rows, "graph_query": gq}

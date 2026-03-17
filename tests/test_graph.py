@@ -191,3 +191,99 @@ def test_graph_query_section_children(store, mock_db):
     result = store.graph_query_section_children("Chapter 1")
     assert len(result) == 1
     assert result[0]["child_title"] == "Section 1.1"
+
+
+class TestMultiHopTraversal:
+    """Tests for multi-hop GRAPH_TABLE traversal methods."""
+
+    def setup_method(self):
+        self.mock_db = MagicMock()
+        self.gs = GraphStore(self.mock_db)
+
+    def test_traverse_entity_neighborhood(self):
+        self.mock_db.fetchall.return_value = [
+            {"section_id": 1, "title": "Risk Factors", "text_content": "...",
+             "depth_level": 1, "relevance": "DISCUSSES",
+             "co_entity_id": 2, "co_entity_name": "China",
+             "co_entity_type": "LOCATION"}
+        ]
+        result = self.gs.traverse_entity_neighborhood(42)
+        assert len(result["sections"]) == 1
+        assert result["sections"][0]["title"] == "Risk Factors"
+        assert len(result["entities"]) == 1
+        assert result["graph_query"].purpose != ""
+        call_sql = self.mock_db.fetchall.call_args[0][0]
+        assert "GRAPH_TABLE" in call_sql
+
+    def test_traverse_entity_neighborhood_deduplicates(self):
+        """Same section appearing with different co-entities should be deduped."""
+        self.mock_db.fetchall.return_value = [
+            {"section_id": 1, "title": "Risk", "text_content": "...",
+             "depth_level": 1, "relevance": "DISCUSSES",
+             "co_entity_id": 2, "co_entity_name": "China", "co_entity_type": "LOCATION"},
+            {"section_id": 1, "title": "Risk", "text_content": "...",
+             "depth_level": 1, "relevance": "DISCUSSES",
+             "co_entity_id": 3, "co_entity_name": "India", "co_entity_type": "LOCATION"},
+        ]
+        result = self.gs.traverse_entity_neighborhood(42)
+        assert len(result["sections"]) == 1  # deduplicated
+        assert len(result["entities"]) == 2  # both entities kept
+
+    def test_traverse_entity_neighborhood_empty(self):
+        self.mock_db.fetchall.return_value = []
+        result = self.gs.traverse_entity_neighborhood(99)
+        assert result["sections"] == []
+        assert result["entities"] == []
+
+    def test_traverse_section_ancestors(self):
+        self.mock_db.fetchall.return_value = [
+            {"section_id": 10, "title": "Introduction", "depth_level": 0, "tree_level": 1}
+        ]
+        result = self.gs.traverse_section_ancestors(20)
+        assert len(result) == 1
+
+    def test_traverse_section_descendants(self):
+        self.mock_db.fetchall.return_value = [
+            {"section_id": 21, "title": "Sub-section A", "depth_level": 2, "tree_level": 1},
+            {"section_id": 22, "title": "Sub-section B", "depth_level": 2, "tree_level": 1},
+        ]
+        result = self.gs.traverse_section_descendants(10)
+        assert len(result) == 2
+
+    def test_find_entity_paths(self):
+        self.mock_db.fetchall.return_value = [
+            {"source_name": "Apple", "mid_id": 5, "mid_name": "iPhone",
+             "mid_type": "TECHNOLOGY", "r1_type": "PART_OF",
+             "target_name": "Qualcomm", "r2_type": "USED_BY"}
+        ]
+        result = self.gs.find_entity_paths("Apple", "Qualcomm")
+        assert len(result["paths"]) == 1
+        assert result["paths"][0]["mid_name"] == "iPhone"
+        assert result["graph_query"].purpose != ""
+
+    def test_find_entity_paths_empty(self):
+        self.mock_db.fetchall.return_value = []
+        result = self.gs.find_entity_paths("A", "B")
+        assert result["paths"] == []
+
+    def test_get_multi_hop_entities(self):
+        self.mock_db.fetchall.return_value = [
+            {"entity_id": 2, "name": "iPhone", "entity_type": "TECHNOLOGY",
+             "relationship": "PART_OF", "hops": 1},
+            {"entity_id": 3, "name": "Qualcomm", "entity_type": "ORGANIZATION",
+             "relationship": "USED_BY", "hops": 2},
+        ]
+        result = self.gs.get_multi_hop_entities(entity_id=1, max_hops=2)
+        assert len(result["entities"]) == 2
+        assert result["entities"][0]["hops"] == 1
+
+    def test_get_multi_hop_entities_single_hop(self):
+        self.mock_db.fetchall.return_value = [
+            {"entity_id": 2, "name": "iPhone", "entity_type": "TECH",
+             "relationship": "PART_OF", "hops": 1}
+        ]
+        result = self.gs.get_multi_hop_entities(entity_id=1, max_hops=1)
+        assert len(result["entities"]) == 1
+        # Verify SQL does NOT contain UNION for single hop
+        call_sql = self.mock_db.fetchall.call_args[0][0]
+        assert "UNION" not in call_sql
