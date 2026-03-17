@@ -127,6 +127,44 @@ def cmd_query(args):
         db.close()
 
 
+def cmd_enrich(args):
+    """Run the graph enrichment agent to discover missing relationships."""
+    from oracle_pageindex.enricher import GraphEnricher
+
+    cfg = get_config(args)
+    llm = OllamaClient(
+        base_url=cfg.ollama_base_url,
+        model=cfg.ollama_model,
+        temperature=cfg.ollama_temperature,
+        num_ctx=getattr(cfg, 'ollama_num_ctx', 16384),
+    )
+    db = OracleDB(
+        user=cfg.oracle_user,
+        password=cfg.oracle_password,
+        dsn=cfg.oracle_dsn,
+    )
+    try:
+        graph = GraphStore(db)
+        enricher = GraphEnricher(llm=llm, graph_store=graph)
+        stats = enricher.enrich(
+            max_candidates=args.max_candidates,
+            dry_run=args.dry_run,
+            doc_id=getattr(args, "doc_id", None),
+        )
+        print("Enrichment complete.")
+        print(f"  Candidates analyzed: {stats['candidates_analyzed']}")
+        print(f"  New relationships:   {stats['new_relationships']}")
+        print(f"  LLM calls:           {stats['llm_calls']}")
+        if stats["relationship_types"]:
+            print("  Relationship types:")
+            for rtype, count in stats["relationship_types"].items():
+                print(f"    {rtype}: {count}")
+        if args.dry_run:
+            print("  (dry run -- no edges inserted)")
+    finally:
+        db.close()
+
+
 def cmd_serve(args):
     """Start the FastAPI visualization server."""
     import uvicorn
@@ -179,6 +217,21 @@ def build_parser():
     p_query = sub.add_parser("query", help="Query the knowledge graph.")
     p_query.add_argument("question", type=str, help="Natural-language question.")
 
+    # --- enrich ---
+    p_enrich = sub.add_parser("enrich", help="Run the graph enrichment agent.")
+    p_enrich.add_argument(
+        "--dry-run", action="store_true",
+        help="Detect gaps but don't insert new edges.",
+    )
+    p_enrich.add_argument(
+        "--max-candidates", type=int, default=50,
+        help="Maximum co-occurring pairs to examine (default: 50).",
+    )
+    p_enrich.add_argument(
+        "--doc-id", type=int, default=None,
+        help="Only examine pairs from this document.",
+    )
+
     # --- serve ---
     p_serve = sub.add_parser("serve", help="Start the FastAPI visualization server.")
     p_serve.add_argument("--host", type=str, default="0.0.0.0", help="Bind host.")
@@ -195,6 +248,7 @@ COMMANDS = {
     "init": cmd_init,
     "index": cmd_index,
     "query": cmd_query,
+    "enrich": cmd_enrich,
     "serve": cmd_serve,
 }
 

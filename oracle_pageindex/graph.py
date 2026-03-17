@@ -603,6 +603,71 @@ class GraphStore:
         return {"entities": rows, "graph_query": gq}
 
     # ------------------------------------------------------------------
+    # Enrichment support methods
+    # ------------------------------------------------------------------
+
+    def get_isolated_entities(self, min_mentions=2):
+        """Find entities mentioned frequently but with no relationship edges."""
+        sql = """
+            SELECT e.entity_id, e.name, e.entity_type, COUNT(se.edge_id) AS mention_count
+            FROM entities e
+            JOIN section_entities se ON se.entity_id = e.entity_id
+            LEFT JOIN entity_relationships er
+                ON er.source_entity = e.entity_id OR er.target_entity = e.entity_id
+            WHERE er.edge_id IS NULL
+            GROUP BY e.entity_id, e.name, e.entity_type
+            HAVING COUNT(se.edge_id) >= :min_mentions
+            ORDER BY COUNT(se.edge_id) DESC
+        """
+        return self.db.fetchall(sql, {"min_mentions": min_mentions})
+
+    def get_cooccurring_pairs(self, min_shared=2):
+        """Find entity pairs sharing sections but lacking relationship edges."""
+        sql = """
+            SELECT e1.entity_id AS entity1_id, e1.name AS entity1_name, e1.entity_type AS entity1_type,
+                   e2.entity_id AS entity2_id, e2.name AS entity2_name, e2.entity_type AS entity2_type,
+                   COUNT(DISTINCT se1.section_id) AS shared_sections
+            FROM section_entities se1
+            JOIN section_entities se2
+                ON se1.section_id = se2.section_id AND se1.entity_id < se2.entity_id
+            JOIN entities e1 ON e1.entity_id = se1.entity_id
+            JOIN entities e2 ON e2.entity_id = se2.entity_id
+            LEFT JOIN entity_relationships er
+                ON (er.source_entity = se1.entity_id AND er.target_entity = se2.entity_id)
+                OR (er.source_entity = se2.entity_id AND er.target_entity = se1.entity_id)
+            WHERE er.edge_id IS NULL
+            GROUP BY e1.entity_id, e1.name, e1.entity_type,
+                     e2.entity_id, e2.name, e2.entity_type
+            HAVING COUNT(DISTINCT se1.section_id) >= :min_shared
+            ORDER BY COUNT(DISTINCT se1.section_id) DESC
+        """
+        return self.db.fetchall(sql, {"min_shared": min_shared})
+
+    def get_shared_section_text(self, entity1_id, entity2_id):
+        """Get concatenated text of sections where both entities appear."""
+        sql = """
+            SELECT s.text_content
+            FROM sections s
+            JOIN section_entities se1 ON se1.section_id = s.section_id AND se1.entity_id = :e1
+            JOIN section_entities se2 ON se2.section_id = s.section_id AND se2.entity_id = :e2
+            FETCH FIRST 3 ROWS ONLY
+        """
+        rows = self.db.fetchall(sql, {"e1": entity1_id, "e2": entity2_id})
+        return "\n\n".join(r.get("text_content", "") for r in rows if r.get("text_content"))
+
+    def insert_enriched_relationship(self, source_id, target_id, relationship, confidence=0.8):
+        """Insert a relationship edge marked as enrichment-generated."""
+        sql = """
+            INSERT INTO entity_relationships
+                (source_entity, target_entity, relationship, edge_source, confidence)
+            VALUES (:source_id, :target_id, :relationship, 'ENRICHMENT', :confidence)
+        """
+        self.db.execute(sql, {
+            "source_id": source_id, "target_id": target_id,
+            "relationship": relationship, "confidence": confidence,
+        })
+
+    # ------------------------------------------------------------------
     # Session / conversational memory methods
     # ------------------------------------------------------------------
 
