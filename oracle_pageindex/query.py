@@ -61,7 +61,9 @@ class QueryEngine:
 
         Args:
             question: The user's natural language question (max 5000 chars).
-            session_id: Optional conversation session ID (stub, wired in Task 10).
+            session_id: Optional conversation session ID. When provided,
+                previous turn context is loaded and used to supplement entity
+                resolution. When ``None``, a new session is created automatically.
 
         Returns:
             QueryResult dataclass with answer, sources, traversal path, etc.
@@ -69,11 +71,35 @@ class QueryEngine:
         if len(question) > MAX_QUERY_LENGTH:
             question = question[:MAX_QUERY_LENGTH]
 
+        # -- Session management (graceful: never breaks the query) ----------
+        turn_id: int | None = None
+        turn_number: int = 1
+        session_context: dict | None = None
+        try:
+            if session_id is not None:
+                session_context = self.graph.get_session_context(session_id)
+                turns = self.graph.get_session_turns(session_id)
+                turn_number = len(turns) + 1
+            else:
+                session_id = self.graph.create_session(title=question[:100])
+                session_context = None
+                turn_number = 1
+        except Exception:
+            logger.debug("Session management unavailable, continuing without it", exc_info=True)
+
         # Step 1: Classify intent and extract entities
         intent, entity_names = self.llm.classify_intent(question)
         logger.info(f"Intent: {intent.value}, Entities: {entity_names}")
 
+        # Create turn record (after intent classification so we can store the intent)
+        try:
+            intent_str = intent.value if hasattr(intent, "value") else str(intent)
+            turn_id = self.graph.create_turn(session_id, turn_number, question, intent_str)
+        except Exception:
+            logger.debug("Failed to create turn record", exc_info=True)
+
         if not entity_names:
+            self._update_turn_answer(turn_id, "I could not extract any concepts from the question. Please rephrase.")
             return QueryResult(
                 answer="I could not extract any concepts from the question. Please rephrase.",
                 sources=[],
@@ -83,6 +109,16 @@ class QueryEngine:
 
         # Step 2: Resolve entity names to graph records (with IDs)
         resolved = self._resolve_entity_ids(entity_names)
+
+        # Supplement with entities from previous turns in the session
+        if session_context and session_context.get("primary_entities"):
+            resolved_names = {e.get("name", "").lower() for e in resolved}
+            for prev_ent in session_context["primary_entities"]:
+                prev_name = prev_ent if isinstance(prev_ent, str) else prev_ent.get("name", "")
+                if prev_name.lower() not in resolved_names:
+                    extra = self._resolve_entity_ids([prev_name])
+                    resolved.extend(extra)
+                    resolved_names.add(prev_name.lower())
 
         # Step 3: Dispatch by intent
         graph_queries: list[GraphQuery] = []
@@ -111,11 +147,13 @@ class QueryEngine:
 
         # Step 6: If still nothing, return early
         if not sections_by_id:
+            no_info_answer = (
+                "No relevant information found in the knowledge graph "
+                "for the given question. Try rephrasing or using different terms."
+            )
+            self._update_turn_answer(turn_id, no_info_answer)
             return QueryResult(
-                answer=(
-                    "No relevant information found in the knowledge graph "
-                    "for the given question. Try rephrasing or using different terms."
-                ),
+                answer=no_info_answer,
                 sources=[],
                 concepts=entity_names,
                 graph_queries=graph_queries,
@@ -127,6 +165,11 @@ class QueryEngine:
         sections_list = list(sections_by_id.values())
         context = self._build_context(sections_list, all_related)
         answer = self._reason(question, context)
+
+        # -- Record turn edges (entities + sections) -----------------------
+        self._record_turn_entities(turn_id, resolved, all_related)
+        self._record_turn_sections(turn_id, sections_list)
+        self._update_turn_answer(turn_id, answer)
 
         # Build sources list (deduplicated)
         sources = []
@@ -409,6 +452,51 @@ class QueryEngine:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _update_turn_answer(self, turn_id: int | None, answer: str) -> None:
+        """Persist the answer for a turn. Silently ignored when session tables are unavailable."""
+        if turn_id is None:
+            return
+        try:
+            self.graph.update_turn_answer(turn_id, answer)
+        except Exception:
+            logger.debug("Failed to update turn answer for turn_id=%s", turn_id, exc_info=True)
+
+    def _record_turn_entities(
+        self, turn_id: int | None, primary: list[dict], related: list[dict]
+    ) -> None:
+        """Record which entities a turn touched. Failures are silently ignored."""
+        if turn_id is None:
+            return
+        seen: set[int] = set()
+        for ent in primary:
+            eid = ent.get("entity_id")
+            if eid and eid not in seen:
+                seen.add(eid)
+                try:
+                    self.graph.insert_turn_entity(turn_id, eid, "PRIMARY")
+                except Exception:
+                    pass
+        for ent in related:
+            eid = ent.get("entity_id")
+            if eid and eid not in seen:
+                seen.add(eid)
+                try:
+                    self.graph.insert_turn_entity(turn_id, eid, "REFERENCED")
+                except Exception:
+                    pass
+
+    def _record_turn_sections(self, turn_id: int | None, sections: list[dict]) -> None:
+        """Record which sections a turn used for context. Failures are silently ignored."""
+        if turn_id is None:
+            return
+        for i, sec in enumerate(sections):
+            sid = sec.get("section_id")
+            if sid:
+                try:
+                    self.graph.insert_turn_section(turn_id, sid, rank_score=1.0 - (i * 0.1))
+                except Exception:
+                    pass
 
     def _resolve_entity_ids(self, entity_names: list[str]) -> list[dict]:
         """Resolve entity name strings to entity records with IDs."""

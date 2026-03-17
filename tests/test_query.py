@@ -73,6 +73,13 @@ def mock_graph():
     graph.traverse_section_descendants.return_value = [
         {"section_id": 10, "title": "Q1 Details", "depth_level": 1, "tree_level": 1},
     ]
+
+    # Session management defaults (Task 10)
+    graph.create_session.return_value = 1
+    graph.create_turn.return_value = 1
+    graph.get_session_context.return_value = None
+    graph.get_session_turns.return_value = []
+
     return graph
 
 
@@ -184,10 +191,11 @@ def test_query_session_id_passthrough(engine, mock_llm, mock_graph):
     assert result.session_id == 42
 
 
-def test_query_session_id_defaults_none(engine, mock_llm, mock_graph):
-    """session_id defaults to None when not provided."""
+def test_query_session_id_auto_created(engine, mock_llm, mock_graph):
+    """session_id is auto-created when not provided (no longer None)."""
     result = engine.query("What is Apple?")
-    assert result.session_id is None
+    assert result.session_id == 1  # create_session returns 1 by default
+    mock_graph.create_session.assert_called_once()
 
 
 # ------------------------------------------------------------------
@@ -330,3 +338,122 @@ def test_query_no_matches_returns_message(engine, mock_llm, mock_graph):
     result = engine.query("nonexistent concept")
     assert isinstance(result, QueryResult)
     assert "no relevant information" in result.answer.lower()
+
+
+# ------------------------------------------------------------------
+# Session integration tests (Task 10)
+# ------------------------------------------------------------------
+
+
+def test_query_creates_session_automatically(mock_llm, mock_graph):
+    """First query without session_id creates a new session."""
+    mock_graph.create_session.return_value = 1
+    mock_graph.create_turn.return_value = 10
+    engine = QueryEngine(mock_llm, mock_graph)
+
+    result = engine.query("What is Apple?")
+
+    mock_graph.create_session.assert_called_once_with(title="What is Apple?")
+    mock_graph.create_turn.assert_called_once()
+    assert result.session_id == 1
+
+
+def test_query_uses_existing_session(mock_llm, mock_graph):
+    """Query with session_id loads context from previous turns."""
+    mock_graph.get_session_context.return_value = {
+        "primary_entities": ["Revenue"],
+    }
+    mock_graph.get_session_turns.return_value = [
+        {"turn_id": 1, "turn_number": 1, "question": "prev"},
+    ]
+    mock_graph.create_turn.return_value = 20
+    engine = QueryEngine(mock_llm, mock_graph)
+
+    result = engine.query("What is Apple?", session_id=42)
+
+    mock_graph.get_session_context.assert_called_once_with(42)
+    mock_graph.get_session_turns.assert_called_once_with(42)
+    assert result.session_id == 42
+    # Turn should be number 2 (one existing turn + 1)
+    call_args = mock_graph.create_turn.call_args
+    assert call_args[0][1] == 2  # turn_number
+
+
+def test_query_records_turn_entities(mock_llm, mock_graph):
+    """Query records touched entities via insert_turn_entity."""
+    mock_graph.create_session.return_value = 1
+    mock_graph.create_turn.return_value = 10
+    engine = QueryEngine(mock_llm, mock_graph)
+
+    engine.query("What is Apple?")
+
+    # Should have been called for primary (entity_id=1) and referenced (entity_id=2)
+    assert mock_graph.insert_turn_entity.call_count >= 1
+    # Check the first call was PRIMARY for entity 1
+    first_call = mock_graph.insert_turn_entity.call_args_list[0]
+    assert first_call[0][0] == 10  # turn_id
+    assert first_call[0][1] == 1   # entity_id
+    assert first_call[0][2] == "PRIMARY"
+
+
+def test_query_records_turn_sections(mock_llm, mock_graph):
+    """Query records used sections via insert_turn_section."""
+    mock_graph.create_session.return_value = 1
+    mock_graph.create_turn.return_value = 10
+    engine = QueryEngine(mock_llm, mock_graph)
+
+    engine.query("What is Apple?")
+
+    mock_graph.insert_turn_section.assert_called()
+    first_call = mock_graph.insert_turn_section.call_args_list[0]
+    assert first_call[0][0] == 10  # turn_id
+    assert first_call[0][1] == 1   # section_id
+    assert first_call[1]["rank_score"] == 1.0
+
+
+def test_query_updates_turn_answer(mock_llm, mock_graph):
+    """Query stores the LLM answer back into the turn record."""
+    mock_graph.create_session.return_value = 1
+    mock_graph.create_turn.return_value = 10
+    engine = QueryEngine(mock_llm, mock_graph)
+
+    engine.query("What is Apple?")
+
+    mock_graph.update_turn_answer.assert_called_once_with(10, "Apple's revenue was $100B.")
+
+
+def test_query_session_graceful_degradation(mock_llm, mock_graph):
+    """Session operations failing should not break the query itself."""
+    mock_graph.create_session.side_effect = Exception("DB unavailable")
+    engine = QueryEngine(mock_llm, mock_graph)
+
+    # Should still return a valid result
+    result = engine.query("What is Apple?")
+    assert isinstance(result, QueryResult)
+    assert result.answer == "Apple's revenue was $100B."
+
+
+def test_query_existing_session_injects_previous_entities(mock_llm, mock_graph):
+    """Previous turn entities supplement the current entity resolution."""
+    # Set up: session context has "Google" from a previous turn
+    mock_graph.get_session_context.return_value = {
+        "primary_entities": ["Google"],
+    }
+    mock_graph.get_session_turns.return_value = [{"turn_id": 1, "turn_number": 1}]
+    mock_graph.create_turn.return_value = 20
+    # Add Google to the entity list so it can be resolved
+    mock_graph.get_all_entities.return_value = [
+        {"entity_id": 1, "name": "Apple", "entity_type": "ORGANIZATION", "description": "Tech company"},
+        {"entity_id": 2, "name": "Revenue", "entity_type": "METRIC", "description": "Income"},
+        {"entity_id": 3, "name": "Google", "entity_type": "ORGANIZATION", "description": "Search"},
+    ]
+    engine = QueryEngine(mock_llm, mock_graph)
+
+    # Query only mentions Apple, but Google should be pulled in from session context
+    result = engine.query("What is Apple?", session_id=42)
+
+    # traverse_entity_neighborhood should be called for Apple (1) AND Google (3)
+    neighborhood_calls = mock_graph.traverse_entity_neighborhood.call_args_list
+    entity_ids_traversed = [c[0][0] for c in neighborhood_calls]
+    assert 1 in entity_ids_traversed  # Apple
+    assert 3 in entity_ids_traversed  # Google from session context

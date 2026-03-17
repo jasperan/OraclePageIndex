@@ -1,7 +1,8 @@
 """FastAPI server for OraclePageIndex graph data and query API.
 
-Provides REST endpoints for the D3.js visualization frontend and
-a natural-language query endpoint powered by Ollama + Oracle graph.
+Provides REST endpoints for the D3.js visualization frontend,
+a natural-language query endpoint powered by Ollama + Oracle graph,
+and conversational session management.
 
 Lazy initialization: the server starts even if Oracle is unavailable,
 returning empty data for graph endpoints. This lets frontend developers
@@ -10,6 +11,7 @@ work on the D3.js visualization without a live database.
 
 import asyncio
 import logging
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -243,8 +245,15 @@ async def api_related_entities(entity_name: str):
 
 
 @app.get("/api/query")
-async def api_query(q: str = Query(..., min_length=1, max_length=5000, description="Natural language question")):
-    """Answer a question using graph-retrieved context and Ollama reasoning."""
+async def api_query(
+    q: str = Query(..., min_length=1, max_length=5000, description="Natural language question"),
+    session_id: int | None = Query(None, description="Conversation session ID (omit to start new session)"),
+):
+    """Answer a question using graph-retrieved context and Ollama reasoning.
+
+    Pass ``session_id`` to continue an existing conversation. When omitted,
+    a new session is created automatically.
+    """
     if query_engine is None:
         raise HTTPException(
             status_code=503,
@@ -253,11 +262,40 @@ async def api_query(q: str = Query(..., min_length=1, max_length=5000, descripti
     try:
         # QueryEngine.query() is synchronous; run in a thread to avoid
         # blocking the event loop.
-        result = await asyncio.to_thread(query_engine.query, q)
-        return result
+        result = await asyncio.to_thread(query_engine.query, q, session_id)
+        return asdict(result)
     except Exception:
         logger.exception("Query failed for q=%s", q)
         raise HTTPException(status_code=500, detail="Internal error processing query")
+
+
+# ---------------------------------------------------------------------------
+# Session endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/sessions")
+async def api_sessions():
+    """List all conversation sessions."""
+    if graph is None:
+        return []
+    try:
+        return graph.list_sessions()
+    except Exception:
+        logger.exception("Error fetching sessions")
+        return []
+
+
+@app.get("/api/sessions/{session_id}/turns")
+async def api_session_turns(session_id: int):
+    """Return all turns in a conversation session."""
+    if graph is None:
+        return []
+    try:
+        return graph.get_session_turns(session_id)
+    except Exception:
+        logger.exception("Error fetching turns for session_id=%s", session_id)
+        return []
 
 
 # ---------------------------------------------------------------------------
