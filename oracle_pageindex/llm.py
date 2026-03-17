@@ -117,6 +117,52 @@ class OllamaClient:
 
         raise OllamaError(f"Max retries ({max_retries}) reached for prompt: {prompt[:100]}...")
 
+    INTENT_CLASSIFICATION_PROMPT = """Classify the intent of this question and extract the key entities mentioned.
+
+Intent types:
+- LOOKUP: Direct question about a specific entity ("What is X?", "Tell me about X")
+- RELATIONSHIP: How two or more entities relate ("How does X relate to Y?", "Connection between X and Y")
+- EXPLORATION: Broad exploration of a topic ("What are the risks?", "Key findings")
+- COMPARISON: Compare entities ("X vs Y", "Compare X and Y", "Differences between X and Y")
+- HIERARCHICAL: Drill into document structure ("Details about section X", "Subsections of X")
+- TEMPORAL: Changes over time or between versions ("What changed?", "Differences between 2023 and 2024")
+
+Return ONLY valid JSON:
+{"intent": "INTENT_TYPE", "entities": ["entity1", "entity2"]}
+
+Question: """
+
+    def classify_intent(self, question: str) -> tuple:
+        """Classify query intent and extract key entities.
+
+        Returns:
+            tuple of (QueryIntent, list[str]) - the intent enum and extracted entity names
+        """
+        from oracle_pageindex.models import QueryIntent
+
+        try:
+            response = self.chat(self.INTENT_CLASSIFICATION_PROMPT + question, max_retries=3)
+            parsed = self.extract_json(response)
+
+            intent_str = parsed.get("intent", "EXPLORATION").upper()
+            entities = parsed.get("entities", [])
+
+            # Map string to enum, default to EXPLORATION
+            try:
+                intent = QueryIntent(intent_str)
+            except ValueError:
+                intent = QueryIntent.EXPLORATION
+
+            # Ensure entities is a list of strings
+            if not isinstance(entities, list):
+                entities = []
+            entities = [str(e) for e in entities if e]
+
+            return intent, entities
+
+        except Exception:
+            return QueryIntent.EXPLORATION, []
+
     @staticmethod
     def extract_json(content: str):
         """Extract JSON from LLM output that may be wrapped in markdown fences."""
