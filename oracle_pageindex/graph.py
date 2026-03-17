@@ -295,12 +295,18 @@ class GraphStore:
         edges = []
 
         # Document nodes
-        for doc in self.db.fetchall("SELECT doc_id, doc_name FROM documents"):
-            nodes.append({
+        for doc in self.db.fetchall(
+            "SELECT doc_id, doc_name, doc_group, doc_version FROM documents"
+        ):
+            node = {
                 "id": f"doc_{doc['doc_id']}",
                 "type": "document",
                 "label": doc["doc_name"],
-            })
+            }
+            if doc.get("doc_group"):
+                node["doc_group"] = doc["doc_group"]
+                node["doc_version"] = doc.get("doc_version", 1)
+            nodes.append(node)
 
         # Section nodes
         for sec in self.db.fetchall("SELECT section_id, title, doc_id FROM sections"):
@@ -353,6 +359,28 @@ class GraphStore:
             })
 
         return {"nodes": nodes, "edges": edges}
+
+    def get_versioned_graph_data(self, doc_group, version):
+        """Return graph data with temporal annotations for a specific version.
+
+        Fetches the full graph and then overlays temporal change information
+        (APPEARED, DISAPPEARED, MODIFIED, STABLE) on entity nodes that have
+        recorded changes for the given doc_group and version.
+        """
+        data = self.get_full_graph_data()
+        try:
+            changes = self.get_temporal_changes(doc_group, None, version)
+            change_map = {}
+            for c in changes:
+                entity_name = c.get("name") or c.get("entity_name")
+                if entity_name:
+                    change_map[entity_name] = c["change_type"]
+            for node in data.get("nodes", []):
+                if node.get("type") == "entity" and node.get("label") in change_map:
+                    node["temporal_status"] = change_map[node["label"]]
+        except Exception:
+            pass  # temporal data may not exist yet
+        return data
 
     # ------------------------------------------------------------------
     # SQL/PGQ graph query methods

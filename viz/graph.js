@@ -72,6 +72,7 @@
         updateStats();
         buildGraph();
         bindControls();
+        initTimelineControls();
     }
 
     // ---------------------------------------------------------------
@@ -551,6 +552,104 @@
         document.getElementById("clear-path-btn").addEventListener("click", clearTraversalOverlay);
         document.getElementById("replay-btn").addEventListener("click", () => {
             if (window._lastTraversalPath) replayTraversal(window._lastTraversalPath);
+        });
+    }
+
+    // ---------------------------------------------------------------
+    // Temporal Timeline Controls
+    // ---------------------------------------------------------------
+
+    function detectVersionedDocuments() {
+        const groups = {};
+        graphData.nodes.forEach(n => {
+            if (n.type === "document" && n.doc_group) {
+                if (!groups[n.doc_group]) groups[n.doc_group] = [];
+                groups[n.doc_group].push(n.doc_version || 1);
+            }
+        });
+        return groups;
+    }
+
+    function initTimelineControls() {
+        const groups = detectVersionedDocuments();
+        const groupNames = Object.keys(groups);
+        if (groupNames.length === 0) return;  // no versioned docs, keep hidden
+
+        const controls = document.getElementById("timeline-controls");
+        const slider = document.getElementById("version-slider");
+        const label = document.getElementById("version-label");
+        const select = document.getElementById("doc-group-select");
+
+        // Populate doc group dropdown
+        groupNames.forEach(g => {
+            const opt = document.createElement("option");
+            opt.value = g;
+            opt.textContent = g;
+            select.appendChild(opt);
+        });
+
+        // Show controls
+        controls.style.display = "flex";
+
+        // On group change, update slider range
+        select.addEventListener("change", () => {
+            const group = select.value;
+            if (!group || !groups[group]) {
+                slider.max = 1;
+                slider.value = 1;
+                label.textContent = "v1";
+                return;
+            }
+            const versions = groups[group].sort((a, b) => a - b);
+            slider.min = versions[0];
+            slider.max = versions[versions.length - 1];
+            slider.value = versions[versions.length - 1];
+            label.textContent = "v" + slider.value;
+        });
+
+        // On slider change, re-fetch versioned graph
+        slider.addEventListener("input", async () => {
+            label.textContent = "v" + slider.value;
+            const group = select.value;
+            if (!group) return;
+            await fetchVersionedGraph(group, parseInt(slider.value));
+        });
+    }
+
+    async function fetchVersionedGraph(docGroup, version) {
+        try {
+            const res = await fetch(`/api/graph?doc_group=${encodeURIComponent(docGroup)}&version=${version}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            applyTemporalStyles(data);
+        } catch (err) {
+            console.warn("Failed to fetch versioned graph:", err.message);
+        }
+    }
+
+    function applyTemporalStyles(data) {
+        // Build a map of entity label -> temporal_status
+        const statusMap = {};
+        data.nodes.forEach(n => {
+            if (n.temporal_status) statusMap[n.label] = n.temporal_status;
+        });
+
+        // Apply CSS classes to entity nodes
+        nodeSel.each(function(d) {
+            const el = d3.select(this);
+            // Remove any prior temporal classes
+            el.classed("entity-appeared", false)
+              .classed("entity-disappeared", false)
+              .classed("entity-modified", false)
+              .classed("entity-stable", false);
+
+            if (d.type === "entity" && statusMap[d.label]) {
+                const status = statusMap[d.label];
+                if (status === "APPEARED") el.classed("entity-appeared", true);
+                else if (status === "DISAPPEARED") el.classed("entity-disappeared", true);
+                else if (status === "MODIFIED") el.classed("entity-modified", true);
+                else if (status === "STABLE") el.classed("entity-stable", true);
+            }
         });
     }
 

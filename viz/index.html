@@ -39,6 +39,16 @@
         </div>
     </div>
 
+    <!-- Timeline Controls -->
+    <div id="timeline-controls" style="display:none; position:fixed; top:calc(var(--header-height, 56px) + 12px); left:50%; transform:translateX(-50%); z-index:95; padding:8px 16px; background:rgba(22,27,34,0.85); backdrop-filter:blur(8px); border:1px solid #30363d; border-radius:8px; align-items:center; gap:12px;">
+        <label style="color:#8b949e; font-size:12px;">Version:</label>
+        <input type="range" id="version-slider" min="1" max="1" value="1" style="width:200px; accent-color:#58a6ff;">
+        <span id="version-label" style="color:#e6edf3; font-size:13px; min-width:24px;">v1</span>
+        <select id="doc-group-select" style="padding:4px 8px; background:#0d1117; border:1px solid #30363d; border-radius:6px; color:#e6edf3; font-size:12px;">
+            <option value="">All Documents</option>
+        </select>
+    </div>
+
     <!-- Graph Container -->
     <svg id="graph-svg"></svg>
 

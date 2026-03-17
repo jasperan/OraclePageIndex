@@ -471,6 +471,31 @@ html, body {
     background: var(--text-muted);
 }
 
+/* --- Temporal Entity Styles --- */
+.entity-appeared circle {
+    fill: #3fb950 !important;
+    filter: drop-shadow(0 0 4px #3fb950);
+}
+
+.entity-disappeared circle {
+    fill: #f85149 !important;
+    opacity: 0.5;
+}
+
+.entity-modified circle {
+    animation: temporal-pulse 2s infinite;
+}
+
+@keyframes temporal-pulse {
+    0%, 100% { fill: #d29922; }
+    50% { fill: #e3b341; }
+}
+
+.entity-stable circle {
+    fill: #8b949e !important;
+    stroke: #6e7681 !important;
+}
+
 @media (max-width: 480px) {
     #layout-toggle {
         display: none;

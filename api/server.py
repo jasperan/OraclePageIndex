@@ -168,11 +168,21 @@ async def index():
 
 
 @app.get("/api/graph")
-async def api_graph():
-    """Return the full knowledge graph (nodes + edges) for D3.js."""
+async def api_graph(
+    doc_group: str | None = Query(None, description="Document group for version filtering"),
+    version: int | None = Query(None, description="Document version number"),
+):
+    """Return the full knowledge graph (nodes + edges) for D3.js.
+
+    When ``doc_group`` and ``version`` are provided, entity nodes are
+    annotated with a ``temporal_status`` field (APPEARED, DISAPPEARED,
+    MODIFIED, STABLE) reflecting changes at that version.
+    """
     if graph is None:
         return {"nodes": [], "edges": []}
     try:
+        if doc_group and version is not None:
+            return graph.get_versioned_graph_data(doc_group, version)
         return graph.get_full_graph_data()
     except Exception:
         logger.exception("Error fetching full graph data")
