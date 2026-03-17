@@ -90,3 +90,37 @@ def test_extract_json_malformed_returns_empty(client):
     raw = "This is not JSON at all"
     result = client.extract_json(raw)
     assert result == {}
+
+
+def test_embed_returns_vector(client):
+    """embed() calls /api/embed and returns float list."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"embeddings": [[0.1, -0.2, 0.3]]}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("httpx.Client.post", return_value=mock_response):
+        vec = client.embed("Apple Inc.")
+    assert isinstance(vec, list)
+    assert len(vec) == 3
+    assert vec[0] == 0.1
+
+
+def test_embed_uses_custom_model(client):
+    """embed() uses the specified model, not the default chat model."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"embeddings": [[0.1]]}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("httpx.Client.post", return_value=mock_response) as mock_post:
+        client.embed("test", model="nomic-embed-text")
+        call_args = mock_post.call_args
+        payload = call_args[1]["json"]
+        assert payload["model"] == "nomic-embed-text"
+
+
+def test_embed_returns_empty_on_error(client):
+    """embed() returns empty list on API failure."""
+    with patch("httpx.Client.post", side_effect=Exception("connection refused")):
+        vec = client.embed("test")
+    assert vec == []

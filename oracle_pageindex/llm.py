@@ -163,6 +163,30 @@ Question: """
         except Exception:
             return QueryIntent.EXPLORATION, []
 
+    def embed(self, text: str, model: str | None = None) -> list[float]:
+        """Get embedding vector for text via Ollama /api/embed endpoint.
+
+        Args:
+            text: The text to embed (typically an entity name).
+            model: Optional embedding model override. Defaults to self.model.
+
+        Returns:
+            List of floats (the embedding vector), or empty list on error.
+        """
+        embed_model = model or self.model
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                resp = client.post(
+                    f"{self.base_url}/api/embed",
+                    json={"model": embed_model, "input": text},
+                )
+                resp.raise_for_status()
+                embeddings = resp.json().get("embeddings", [[]])
+                return embeddings[0] if embeddings else []
+        except Exception as e:
+            logger.error(f"Embedding error: {e}")
+            return []
+
     @staticmethod
     def extract_json(content: str):
         """Extract JSON from LLM output that may be wrapped in markdown fences."""
