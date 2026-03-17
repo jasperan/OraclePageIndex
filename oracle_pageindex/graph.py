@@ -601,3 +601,109 @@ class GraphStore:
             execution_ms=elapsed_ms,
         )
         return {"entities": rows, "graph_query": gq}
+
+    # ------------------------------------------------------------------
+    # Session / conversational memory methods
+    # ------------------------------------------------------------------
+
+    def create_session(self, title=None, metadata=None):
+        """Create a new conversation session and return its session_id."""
+        sql = """
+            INSERT INTO sessions (title, metadata)
+            VALUES (:title, :metadata)
+            RETURNING session_id INTO :out_id
+        """
+        session_id = self.db.execute_returning(
+            sql, {"title": title, "metadata": metadata}, returning_col="id"
+        )
+        logger.info(f"Created session {session_id}")
+        return session_id
+
+    def create_turn(self, session_id, turn_number, question, intent=None):
+        """Create a new turn in a session and return its turn_id."""
+        sql = """
+            INSERT INTO turns (session_id, turn_number, question, intent)
+            VALUES (:session_id, :turn_number, :question, :intent)
+            RETURNING turn_id INTO :out_id
+        """
+        return self.db.execute_returning(
+            sql,
+            {"session_id": session_id, "turn_number": turn_number,
+             "question": question, "intent": intent},
+            returning_col="id",
+        )
+
+    def update_turn_answer(self, turn_id, answer):
+        """Store the answer for a completed turn."""
+        sql = "UPDATE turns SET answer = :answer WHERE turn_id = :turn_id"
+        self.db.execute(sql, {"answer": answer, "turn_id": turn_id})
+
+    def insert_turn_entity(self, turn_id, entity_id, role="REFERENCED"):
+        """Record that a turn touched an entity."""
+        sql = """
+            INSERT INTO turn_entities (turn_id, entity_id, role)
+            VALUES (:turn_id, :entity_id, :role)
+        """
+        self.db.execute(sql, {"turn_id": turn_id, "entity_id": entity_id, "role": role})
+
+    def insert_turn_section(self, turn_id, section_id, rank_score=None):
+        """Record that a turn used a section for context."""
+        sql = """
+            INSERT INTO turn_sections (turn_id, section_id, rank_score)
+            VALUES (:turn_id, :section_id, :rank_score)
+        """
+        self.db.execute(sql, {"turn_id": turn_id, "section_id": section_id, "rank_score": rank_score})
+
+    def get_session_context(self, session_id):
+        """Get the context from the most recent turn in a session.
+
+        Returns dict with primary_entities and previous_sections.
+        """
+        # Get latest turn number
+        latest = self.db.fetchone(
+            "SELECT MAX(turn_number) AS turn_number FROM turns WHERE session_id = :sid",
+            {"sid": session_id},
+        )
+        if not latest or latest.get("turn_number") is None:
+            return {"primary_entities": [], "previous_sections": []}
+
+        latest_turn = self.db.fetchone(
+            "SELECT turn_id FROM turns WHERE session_id = :sid AND turn_number = :tn",
+            {"sid": session_id, "tn": latest["turn_number"]},
+        )
+        if not latest_turn:
+            return {"primary_entities": [], "previous_sections": []}
+
+        turn_id = latest_turn["turn_id"]
+
+        # Get entities from that turn
+        entities = self.db.fetchall(
+            """SELECT e.entity_id, e.name, e.entity_type, te.role
+               FROM turn_entities te
+               JOIN entities e ON e.entity_id = te.entity_id
+               WHERE te.turn_id = :tid
+               ORDER BY te.role, e.name""",
+            {"tid": turn_id},
+        )
+
+        # Get sections from that turn
+        sections = self.db.fetchall(
+            "SELECT section_id, rank_score FROM turn_sections WHERE turn_id = :tid ORDER BY rank_score DESC",
+            {"tid": turn_id},
+        )
+
+        return {
+            "primary_entities": entities,
+            "previous_sections": [s["section_id"] for s in sections],
+        }
+
+    def list_sessions(self):
+        """Return all conversation sessions."""
+        return self.db.fetchall("SELECT * FROM sessions ORDER BY started_at DESC")
+
+    def get_session_turns(self, session_id):
+        """Return all turns in a session with their entities."""
+        return self.db.fetchall(
+            "SELECT * FROM turns WHERE session_id = :sid ORDER BY turn_number",
+            {"sid": session_id},
+        )
