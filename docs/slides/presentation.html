@@ -1,0 +1,1661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OraclePageIndex: Graph-Powered Document Intelligence</title>
+
+    <!-- Fonts: Manrope from Google Fonts (Electric Studio preset) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        /* ===========================================
+           CSS CUSTOM PROPERTIES (ELECTRIC STUDIO + ORACLE BRANDING)
+           =========================================== */
+        :root {
+            /* Colors: Oracle-branded Electric Studio */
+            --bg-dark: #0a0a0a;
+            --bg-white: #ffffff;
+            --accent-red: #F80000;
+            --accent-blue: #4361ee;
+            --accent-red-glow: rgba(248, 0, 0, 0.15);
+            --accent-blue-glow: rgba(67, 97, 238, 0.15);
+            --text-dark: #0a0a0a;
+            --text-light: #ffffff;
+            --text-muted: #999999;
+            --text-muted-dark: #666666;
+            --card-bg: #141414;
+            --card-border: #222222;
+            --code-bg: #111111;
+            --code-border: #2a2a2a;
+
+            /* Typography: Manrope */
+            --font-display: 'Manrope', sans-serif;
+            --font-body: 'Manrope', sans-serif;
+
+            /* Animation */
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            --duration-normal: 0.6s;
+        }
+
+        /* ===========================================
+           BASE RESET
+           =========================================== */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--bg-dark);
+            color: var(--text-light);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ===========================================
+           VIEWPORT FITTING: MANDATORY BASE STYLES
+           Include this ENTIRE file in every presentation.
+           These styles ensure slides fit exactly in the viewport.
+           =========================================== */
+
+        /* 1. Lock html/body to viewport */
+        html, body {
+            height: 100%;
+            overflow-x: hidden;
+        }
+
+        html {
+            scroll-snap-type: y mandatory;
+            scroll-behavior: smooth;
+        }
+
+        /* 2. Each slide = exact viewport height */
+        .slide {
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            scroll-snap-align: start;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* 3. Content container with flex for centering */
+        .slide-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            max-height: 100%;
+            overflow: hidden;
+            padding: var(--slide-padding);
+        }
+
+        /* 4. ALL typography uses clamp() for responsive scaling */
+        :root {
+            --title-size: clamp(1.5rem, 5vw, 4rem);
+            --h2-size: clamp(1.25rem, 3.5vw, 2.5rem);
+            --h3-size: clamp(1rem, 2.5vw, 1.75rem);
+            --body-size: clamp(0.75rem, 1.5vw, 1.125rem);
+            --small-size: clamp(0.65rem, 1vw, 0.875rem);
+            --slide-padding: clamp(1rem, 4vw, 4rem);
+            --content-gap: clamp(0.5rem, 2vw, 2rem);
+            --element-gap: clamp(0.25rem, 1vw, 1rem);
+        }
+
+        /* 5. Cards/containers use viewport-relative max sizes */
+        .card, .container, .content-box {
+            max-width: min(90vw, 1000px);
+            max-height: min(80vh, 700px);
+        }
+
+        /* 6. Lists auto-scale with viewport */
+        .feature-list, .bullet-list {
+            gap: clamp(0.4rem, 1vh, 1rem);
+        }
+
+        .feature-list li, .bullet-list li {
+            font-size: var(--body-size);
+            line-height: 1.4;
+        }
+
+        /* 7. Grids adapt to available space */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+            gap: clamp(0.5rem, 1.5vw, 1rem);
+        }
+
+        /* 8. Images constrained to viewport */
+        img, .image-container {
+            max-width: 100%;
+            max-height: min(50vh, 400px);
+            object-fit: contain;
+        }
+
+        /* ===========================================
+           RESPONSIVE BREAKPOINTS
+           =========================================== */
+        @media (max-height: 700px) {
+            :root {
+                --slide-padding: clamp(0.75rem, 3vw, 2rem);
+                --content-gap: clamp(0.4rem, 1.5vw, 1rem);
+                --title-size: clamp(1.25rem, 4.5vw, 2.5rem);
+                --h2-size: clamp(1rem, 3vw, 1.75rem);
+            }
+        }
+
+        @media (max-height: 600px) {
+            :root {
+                --slide-padding: clamp(0.5rem, 2.5vw, 1.5rem);
+                --content-gap: clamp(0.3rem, 1vw, 0.75rem);
+                --title-size: clamp(1.1rem, 4vw, 2rem);
+                --body-size: clamp(0.7rem, 1.2vw, 0.95rem);
+            }
+            .nav-dots, .keyboard-hint, .decorative {
+                display: none;
+            }
+        }
+
+        @media (max-height: 500px) {
+            :root {
+                --slide-padding: clamp(0.4rem, 2vw, 1rem);
+                --title-size: clamp(1rem, 3.5vw, 1.5rem);
+                --h2-size: clamp(0.9rem, 2.5vw, 1.25rem);
+                --body-size: clamp(0.65rem, 1vw, 0.85rem);
+            }
+        }
+
+        @media (max-width: 600px) {
+            :root {
+                --title-size: clamp(1.25rem, 7vw, 2.5rem);
+            }
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            .split-panel {
+                flex-direction: column !important;
+            }
+            .split-panel .panel-left,
+            .split-panel .panel-right {
+                width: 100% !important;
+                min-height: 50vh !important;
+            }
+        }
+
+        /* ===========================================
+           REDUCED MOTION
+           =========================================== */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.2s !important;
+            }
+            html {
+                scroll-behavior: auto;
+            }
+        }
+
+        /* ===========================================
+           ANIMATIONS
+           =========================================== */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .reveal-left {
+            opacity: 0;
+            transform: translateX(-50px);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .reveal-right {
+            opacity: 0;
+            transform: translateX(50px);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .reveal-scale {
+            opacity: 0;
+            transform: scale(0.9);
+            transition: opacity var(--duration-normal) var(--ease-out-expo),
+                        transform var(--duration-normal) var(--ease-out-expo);
+        }
+
+        .slide.visible .reveal,
+        .slide.visible .reveal-left,
+        .slide.visible .reveal-right,
+        .slide.visible .reveal-scale {
+            opacity: 1;
+            transform: translateY(0) translateX(0) scale(1);
+        }
+
+        /* Stagger children */
+        .reveal:nth-child(1), .reveal-left:nth-child(1), .reveal-right:nth-child(1) { transition-delay: 0.1s; }
+        .reveal:nth-child(2), .reveal-left:nth-child(2), .reveal-right:nth-child(2) { transition-delay: 0.2s; }
+        .reveal:nth-child(3), .reveal-left:nth-child(3), .reveal-right:nth-child(3) { transition-delay: 0.3s; }
+        .reveal:nth-child(4), .reveal-left:nth-child(4), .reveal-right:nth-child(4) { transition-delay: 0.4s; }
+        .reveal:nth-child(5), .reveal-left:nth-child(5), .reveal-right:nth-child(5) { transition-delay: 0.5s; }
+        .reveal:nth-child(6), .reveal-left:nth-child(6), .reveal-right:nth-child(6) { transition-delay: 0.6s; }
+
+        /* ===========================================
+           PROGRESS BAR
+           =========================================== */
+        .progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 3px;
+            background: var(--accent-red);
+            z-index: 1000;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        /* ===========================================
+           SLIDE COUNTER
+           =========================================== */
+        .slide-counter {
+            position: fixed;
+            top: clamp(0.75rem, 2vw, 1.5rem);
+            right: clamp(0.75rem, 2vw, 1.5rem);
+            font-family: var(--font-body);
+            font-size: var(--small-size);
+            color: var(--text-muted);
+            z-index: 1000;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+        }
+
+        /* ===========================================
+           NAV DOTS
+           =========================================== */
+        .nav-dots {
+            position: fixed;
+            right: clamp(0.5rem, 1.5vw, 1.25rem);
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: clamp(4px, 0.5vh, 8px);
+            z-index: 1000;
+        }
+
+        .nav-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            padding: 0;
+        }
+
+        .nav-dot.active {
+            background: var(--accent-red);
+            transform: scale(1.3);
+        }
+
+        .nav-dot:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        /* ===========================================
+           ELECTRIC STUDIO: SPLIT PANEL LAYOUT
+           =========================================== */
+        .split-panel {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+
+        .panel-left {
+            width: 55%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: var(--slide-padding);
+            position: relative;
+        }
+
+        .panel-right {
+            width: 45%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: var(--slide-padding);
+            position: relative;
+        }
+
+        /* Accent bar between panels */
+        .panel-right::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 15%;
+            height: 70%;
+            width: 3px;
+            background: var(--accent-red);
+        }
+
+        /* ===========================================
+           SLIDE TYPES
+           =========================================== */
+
+        /* --- Title Slide --- */
+        .title-slide {
+            background: var(--bg-dark);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .title-slide::before {
+            content: '';
+            position: absolute;
+            top: -30%;
+            right: -20%;
+            width: 60vw;
+            height: 60vw;
+            border-radius: 50%;
+            background: radial-gradient(circle, var(--accent-red-glow) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .title-slide::after {
+            content: '';
+            position: absolute;
+            bottom: -20%;
+            left: -10%;
+            width: 40vw;
+            height: 40vw;
+            border-radius: 50%;
+            background: radial-gradient(circle, var(--accent-blue-glow) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .title-slide .slide-content {
+            align-items: center;
+            text-align: center;
+            z-index: 1;
+        }
+
+        .title-slide h1 {
+            font-family: var(--font-display);
+            font-size: clamp(2rem, 6vw, 4.5rem);
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+            margin-bottom: var(--element-gap);
+        }
+
+        .title-slide h1 .oracle-red {
+            color: var(--accent-red);
+        }
+
+        .title-slide .subtitle {
+            font-size: clamp(0.875rem, 2vw, 1.25rem);
+            color: var(--text-muted);
+            font-weight: 400;
+            max-width: 600px;
+            line-height: 1.5;
+        }
+
+        .title-slide .badge-row {
+            display: flex;
+            gap: clamp(0.4rem, 1vw, 0.75rem);
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: var(--content-gap);
+        }
+
+        .badge {
+            font-size: var(--small-size);
+            padding: clamp(0.2rem, 0.5vw, 0.35rem) clamp(0.5rem, 1vw, 0.75rem);
+            border-radius: 100px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+        }
+
+        .badge-red { background: var(--accent-red); color: #fff; }
+        .badge-blue { background: var(--accent-blue); color: #fff; }
+        .badge-outline { border: 1px solid var(--text-muted); color: var(--text-muted); }
+
+        /* --- Dark Content Slide --- */
+        .dark-slide {
+            background: var(--bg-dark);
+        }
+
+        .dark-slide h2 {
+            font-family: var(--font-display);
+            font-size: var(--h2-size);
+            font-weight: 800;
+            margin-bottom: var(--content-gap);
+            letter-spacing: -0.01em;
+        }
+
+        .dark-slide h2 .accent { color: var(--accent-red); }
+        .dark-slide h2 .accent-blue { color: var(--accent-blue); }
+
+        .dark-slide p {
+            font-size: var(--body-size);
+            color: var(--text-muted);
+            line-height: 1.6;
+            max-width: 700px;
+        }
+
+        /* --- White Panel Slide (Electric Studio signature) --- */
+        .white-panel-slide .panel-left {
+            background: var(--bg-dark);
+        }
+
+        .white-panel-slide .panel-right {
+            background: var(--bg-white);
+            color: var(--text-dark);
+        }
+
+        .white-panel-slide .panel-right::before {
+            background: var(--accent-red);
+        }
+
+        .white-panel-slide .panel-right h2 {
+            font-family: var(--font-display);
+            font-size: var(--h2-size);
+            font-weight: 800;
+            color: var(--text-dark);
+            margin-bottom: var(--content-gap);
+        }
+
+        .white-panel-slide .panel-right p,
+        .white-panel-slide .panel-right li {
+            color: var(--text-muted-dark);
+            font-size: var(--body-size);
+            line-height: 1.6;
+        }
+
+        /* --- Feature Cards --- */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+            gap: clamp(0.5rem, 1.5vw, 1rem);
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .feature-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: clamp(0.75rem, 2vw, 1.25rem);
+            transition: border-color 0.3s ease, transform 0.3s ease;
+        }
+
+        .feature-card:hover {
+            border-color: var(--accent-red);
+            transform: translateY(-2px);
+        }
+
+        .feature-card .card-icon {
+            font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+            margin-bottom: clamp(0.3rem, 0.8vw, 0.5rem);
+        }
+
+        .feature-card h3 {
+            font-family: var(--font-display);
+            font-size: var(--h3-size);
+            font-weight: 700;
+            margin-bottom: clamp(0.2rem, 0.5vw, 0.4rem);
+            font-size: clamp(0.85rem, 1.8vw, 1.1rem);
+        }
+
+        .feature-card p {
+            font-size: var(--small-size);
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        /* --- Code Blocks --- */
+        .code-block {
+            background: var(--code-bg);
+            border: 1px solid var(--code-border);
+            border-radius: 8px;
+            padding: clamp(0.75rem, 2vw, 1.25rem);
+            font-family: 'Courier New', Courier, monospace;
+            font-size: var(--small-size);
+            line-height: 1.5;
+            overflow: hidden;
+            max-width: 700px;
+            width: 100%;
+        }
+
+        .code-block .keyword { color: #ff7b72; }
+        .code-block .string { color: #a5d6ff; }
+        .code-block .comment { color: #8b949e; }
+        .code-block .function { color: #d2a8ff; }
+        .code-block .type { color: #79c0ff; }
+        .code-block .param { color: #ffa657; }
+
+        /* --- Comparison Table --- */
+        .comparison-table {
+            width: 100%;
+            max-width: 800px;
+            border-collapse: collapse;
+            font-size: var(--small-size);
+        }
+
+        .comparison-table th {
+            font-family: var(--font-display);
+            font-weight: 700;
+            text-align: left;
+            padding: clamp(0.3rem, 0.8vw, 0.6rem) clamp(0.5rem, 1vw, 0.75rem);
+            border-bottom: 2px solid var(--accent-red);
+            font-size: clamp(0.7rem, 1.3vw, 0.95rem);
+        }
+
+        .comparison-table td {
+            padding: clamp(0.25rem, 0.6vw, 0.5rem) clamp(0.5rem, 1vw, 0.75rem);
+            border-bottom: 1px solid var(--card-border);
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .comparison-table td:first-child {
+            color: var(--text-light);
+            font-weight: 600;
+        }
+
+        .comparison-table .highlight-col {
+            color: var(--accent-red) !important;
+        }
+
+        /* --- Section Number --- */
+        .section-num {
+            font-family: var(--font-display);
+            font-size: clamp(0.65rem, 1vw, 0.8rem);
+            font-weight: 800;
+            color: var(--accent-red);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: clamp(0.3rem, 0.8vw, 0.5rem);
+        }
+
+        /* --- Bullet Lists --- */
+        .styled-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: clamp(0.3rem, 0.8vh, 0.6rem);
+        }
+
+        .styled-list li {
+            font-size: var(--body-size);
+            color: var(--text-muted);
+            padding-left: clamp(1rem, 2vw, 1.5rem);
+            position: relative;
+            line-height: 1.5;
+        }
+
+        .styled-list li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0.5em;
+            width: 6px;
+            height: 6px;
+            background: var(--accent-red);
+            border-radius: 50%;
+        }
+
+        .styled-list li strong {
+            color: var(--text-light);
+            font-weight: 600;
+        }
+
+        /* --- Pipeline Steps --- */
+        .pipeline {
+            display: flex;
+            flex-direction: column;
+            gap: clamp(0.25rem, 0.6vh, 0.5rem);
+            max-width: 600px;
+        }
+
+        .pipeline-step {
+            display: flex;
+            align-items: center;
+            gap: clamp(0.4rem, 1vw, 0.75rem);
+            padding: clamp(0.3rem, 0.8vw, 0.6rem) clamp(0.5rem, 1.2vw, 1rem);
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            font-size: var(--small-size);
+            transition: border-color 0.3s ease;
+        }
+
+        .pipeline-step:hover {
+            border-color: var(--accent-red);
+        }
+
+        .step-num {
+            font-family: var(--font-display);
+            font-weight: 800;
+            font-size: clamp(0.7rem, 1.2vw, 0.9rem);
+            color: var(--accent-red);
+            min-width: 1.5em;
+        }
+
+        .step-label {
+            color: var(--text-light);
+            font-weight: 600;
+        }
+
+        .step-desc {
+            color: var(--text-muted);
+            margin-left: 0.3em;
+        }
+
+        .pipeline-arrow {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: var(--small-size);
+            line-height: 1;
+        }
+
+        /* --- Stat Grid --- */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+            gap: clamp(0.5rem, 1.5vw, 1rem);
+            width: 100%;
+            max-width: 700px;
+        }
+
+        .stat-box {
+            text-align: center;
+            padding: clamp(0.5rem, 1.5vw, 1rem);
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+        }
+
+        .stat-box .stat-num {
+            font-family: var(--font-display);
+            font-weight: 800;
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            color: var(--accent-red);
+            line-height: 1.1;
+        }
+
+        .stat-box .stat-label {
+            font-size: var(--small-size);
+            color: var(--text-muted);
+            margin-top: 0.25em;
+        }
+
+        /* --- Schema Diagram --- */
+        .schema-row {
+            display: flex;
+            gap: clamp(0.75rem, 2vw, 1.5rem);
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .schema-group {
+            flex: 1;
+        }
+
+        .schema-group h3 {
+            font-family: var(--font-display);
+            font-size: clamp(0.75rem, 1.3vw, 0.95rem);
+            font-weight: 700;
+            margin-bottom: clamp(0.3rem, 0.8vw, 0.5rem);
+            color: var(--text-light);
+        }
+
+        .schema-item {
+            font-size: var(--small-size);
+            padding: clamp(0.2rem, 0.4vw, 0.35rem) clamp(0.4rem, 0.8vw, 0.6rem);
+            background: var(--card-bg);
+            border-left: 3px solid var(--accent-red);
+            margin-bottom: clamp(0.15rem, 0.3vw, 0.25rem);
+            border-radius: 0 4px 4px 0;
+            color: var(--text-muted);
+        }
+
+        .schema-item.blue-border {
+            border-left-color: var(--accent-blue);
+        }
+
+        /* --- Closing Slide --- */
+        .closing-slide {
+            background: var(--bg-dark);
+            text-align: center;
+        }
+
+        .closing-slide .slide-content {
+            align-items: center;
+        }
+
+        .closing-slide h2 {
+            font-family: var(--font-display);
+            font-weight: 800;
+            font-size: var(--h2-size);
+        }
+
+        .link-row {
+            display: flex;
+            gap: clamp(0.5rem, 1.5vw, 1rem);
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: var(--content-gap);
+        }
+
+        .link-btn {
+            font-size: var(--small-size);
+            padding: clamp(0.35rem, 0.8vw, 0.5rem) clamp(0.75rem, 1.5vw, 1.25rem);
+            border-radius: 100px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: transform 0.2s ease;
+            display: inline-block;
+        }
+
+        .link-btn:hover { transform: translateY(-2px); }
+
+        .link-btn-red { background: var(--accent-red); color: #fff; }
+        .link-btn-blue { background: var(--accent-blue); color: #fff; }
+        .link-btn-outline { border: 1px solid var(--text-muted); color: var(--text-muted); }
+
+        /* --- Grid pattern background --- */
+        .grid-bg::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 60px 60px;
+            pointer-events: none;
+        }
+
+        /* --- Inline list (horizontal) --- */
+        .inline-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: clamp(0.25rem, 0.6vw, 0.4rem);
+        }
+
+        .tag {
+            font-size: var(--small-size);
+            padding: clamp(0.15rem, 0.3vw, 0.25rem) clamp(0.4rem, 0.8vw, 0.6rem);
+            border-radius: 4px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .tag.tag-red { border-color: var(--accent-red); color: var(--accent-red); }
+        .tag.tag-blue { border-color: var(--accent-blue); color: var(--accent-blue); }
+
+    </style>
+</head>
+<body>
+
+    <!-- Progress Bar -->
+    <div class="progress-bar" id="progressBar"></div>
+
+    <!-- Slide Counter -->
+    <div class="slide-counter" id="slideCounter">01 / 22</div>
+
+    <!-- Navigation Dots -->
+    <nav class="nav-dots" id="navDots" aria-label="Slide navigation"></nav>
+
+    <!-- ===========================================
+         SLIDE 01: TITLE
+         =========================================== -->
+    <section class="slide title-slide grid-bg" aria-label="Title slide">
+        <div class="slide-content">
+            <h1 class="reveal"><span class="oracle-red">Oracle</span>PageIndex</h1>
+            <p class="subtitle reveal">Graph-Powered Document Intelligence with SQL Property Graphs</p>
+            <div class="badge-row reveal">
+                <span class="badge badge-red">Oracle 26ai</span>
+                <span class="badge badge-blue">SQL/PGQ</span>
+                <span class="badge badge-outline">Ollama</span>
+                <span class="badge badge-outline">Python 3.11+</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 02: THE PROBLEM
+         =========================================== -->
+    <section class="slide dark-slide grid-bg" aria-label="The problem">
+        <div class="slide-content">
+            <div class="section-num reveal">01 &mdash; The Problem</div>
+            <h2 class="reveal">Similarity <span class="accent">isn't</span> relevance.</h2>
+            <p class="reveal" style="margin-bottom: var(--content-gap);">
+                Vector RAG chunks text, embeds it, then returns whatever is closest in embedding space. Search for "Apple's supply chain risks" and you might get paragraphs about fruit logistics.
+            </p>
+            <p class="reveal">
+                What we actually need: <strong style="color: var(--text-light);">reasoning over document structure</strong>. Follow the table of contents. Cross-reference entities. Traverse relationships. That's what knowledge graphs do.
+            </p>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 03: THE SOLUTION
+         =========================================== -->
+    <section class="slide white-panel-slide" aria-label="The solution">
+        <div class="split-panel">
+            <div class="panel-left" style="justify-content: center; padding: var(--slide-padding);">
+                <div class="section-num reveal">02 &mdash; The Solution</div>
+                <h2 class="reveal" style="font-family: var(--font-display); font-size: var(--h2-size); font-weight: 800;">
+                    Documents become <span style="color: var(--accent-red);">knowledge graphs.</span>
+                </h2>
+                <p class="reveal" style="color: var(--text-muted); font-size: var(--body-size); line-height: 1.6; max-width: 450px;">
+                    OraclePageIndex parses PDFs into Oracle SQL Property Graphs. Entities, sections, and relationships stored as vertices and edges, queryable with standard SQL.
+                </p>
+            </div>
+            <div class="panel-right" style="background: var(--bg-white);">
+                <h2 style="font-size: clamp(0.85rem, 1.5vw, 1.1rem); margin-bottom: var(--content-gap); color: var(--text-dark);" class="reveal">What You Get</h2>
+                <ul class="styled-list reveal" style="gap: clamp(0.4rem, 1vh, 0.75rem);">
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">Graph traversal</strong> over named relationships</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">Multi-hop reasoning</strong> via SQL/PGQ recursive paths</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">Explainable retrieval</strong> with traceable graph paths</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">Fully local</strong>: Ollama + Oracle Free, no API keys</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 04: VECTOR RAG vs GRAPH RAG
+         =========================================== -->
+    <section class="slide dark-slide grid-bg" aria-label="Comparison">
+        <div class="slide-content">
+            <div class="section-num reveal">03 &mdash; Why Graphs?</div>
+            <h2 class="reveal">Vector RAG vs <span class="accent">Graph RAG</span></h2>
+            <table class="comparison-table reveal" style="margin-top: var(--content-gap);">
+                <thead>
+                    <tr><th></th><th>Vector RAG</th><th class="highlight-col">OraclePageIndex</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Storage</td><td>Vector embeddings</td><td class="highlight-col">Property graph in Oracle</td></tr>
+                    <tr><td>Retrieval</td><td>Approximate nearest-neighbor</td><td class="highlight-col">Exact graph traversal (SQL/PGQ)</td></tr>
+                    <tr><td>Relationships</td><td>Lost during chunking</td><td class="highlight-col">First-class named edges</td></tr>
+                    <tr><td>Explainability</td><td>Opaque similarity scores</td><td class="highlight-col">Traceable graph paths</td></tr>
+                    <tr><td>Multi-hop</td><td>Re-ranking hacks</td><td class="highlight-col">Native recursive expressions</td></tr>
+                    <tr><td>Query language</td><td>Proprietary APIs</td><td class="highlight-col">Standard SQL</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 05: CORE FEATURES (1/2)
+         =========================================== -->
+    <section class="slide dark-slide" aria-label="Core features part 1">
+        <div class="slide-content">
+            <div class="section-num reveal">04 &mdash; Core Features</div>
+            <h2 class="reveal">What <span class="accent">OraclePageIndex</span> Does</h2>
+            <div class="feature-grid reveal" style="margin-top: var(--content-gap);">
+                <div class="feature-card">
+                    <div class="card-icon">&#x1F50D;</div>
+                    <h3>Graph-Based Reasoning</h3>
+                    <p>Retrieval follows MENTIONS, PARENT_OF, RELATED_TO edges. Not opaque similarity.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">&#x26A1;</div>
+                    <h3>Multi-Hop Traversal</h3>
+                    <p>SQL/PGQ GRAPH_TABLE MATCH with recursive path expressions for deep exploration.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">&#x1F9E0;</div>
+                    <h3>Intent Classification</h3>
+                    <p>6 question types: LOOKUP, RELATIONSHIP, EXPLORATION, COMPARISON, HIERARCHICAL, TEMPORAL.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">&#x1F4AC;</div>
+                    <h3>Conversational Memory</h3>
+                    <p>Sessions and turns stored as graph vertices. Follow-ups resolve pronouns automatically.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">&#x23F3;</div>
+                    <h3>Temporal Versioning</h3>
+                    <p>Track entity changes across document versions with diff computation.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">&#x1F517;</div>
+                    <h3>Entity Resolution</h3>
+                    <p>Vector-assisted dedup with LLM confirmation. "Apple Inc." = "Apple" = "AAPL".</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 06: CORE FEATURES (2/2)
+         =========================================== -->
+    <section class="slide dark-slide" aria-label="Core features part 2">
+        <div class="slide-content">
+            <div class="section-num reveal">04 &mdash; Core Features (cont.)</div>
+            <h2 class="reveal">Living <span class="accent-blue">Knowledge Graph</span></h2>
+            <div class="feature-grid reveal" style="margin-top: var(--content-gap);">
+                <div class="feature-card">
+                    <div class="card-icon">&#x1F52C;</div>
+                    <h3>Graph Enrichment Agent</h3>
+                    <p>Post-indexing pass discovers missing relationships between isolated entities.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">&#x1F4CA;</div>
+                    <h3>Query Transparency</h3>
+                    <p>Every response includes the SQL/PGQ queries, traversal path, and timing data.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">&#x1F310;</div>
+                    <h3>D3.js Visualization</h3>
+                    <p>Interactive force-directed graph with query overlay, timeline slider, and SQL panel.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">&#x1F4C4;</div>
+                    <h3>Standard SQL</h3>
+                    <p>Every query is pure SQL with GRAPH_TABLE. No proprietary graph language needed.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">&#x1F3E0;</div>
+                    <h3>Fully Local</h3>
+                    <p>Ollama for LLM + embeddings. Oracle Free for storage. Zero cloud dependencies.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">&#x1F4E1;</div>
+                    <h3>REST API</h3>
+                    <p>12 FastAPI endpoints: graph data, queries, documents, entities, sessions, and turns.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 07: ARCHITECTURE OVERVIEW
+         =========================================== -->
+    <section class="slide dark-slide grid-bg" aria-label="Architecture overview">
+        <div class="slide-content">
+            <div class="section-num reveal">05 &mdash; Architecture</div>
+            <h2 class="reveal">Two Pipelines, <span class="accent">One Graph</span></h2>
+            <div style="display: flex; gap: var(--content-gap); flex-wrap: wrap; margin-top: var(--content-gap); max-width: 800px;">
+                <div style="flex: 1; min-width: 250px;" class="reveal">
+                    <h3 style="font-family: var(--font-display); font-size: clamp(0.85rem, 1.5vw, 1.1rem); font-weight: 700; margin-bottom: var(--element-gap); color: var(--accent-red);">Indexing Pipeline</h3>
+                    <p style="font-size: var(--small-size); color: var(--text-muted); line-height: 1.5;">PDF &rarr; Parse structure &rarr; Extract entities &rarr; Store in Oracle Property Graph &rarr; Link entities &rarr; Resolve duplicates &rarr; Enrich gaps</p>
+                </div>
+                <div style="flex: 1; min-width: 250px;" class="reveal">
+                    <h3 style="font-family: var(--font-display); font-size: clamp(0.85rem, 1.5vw, 1.1rem); font-weight: 700; margin-bottom: var(--element-gap); color: var(--accent-blue);">Query Pipeline</h3>
+                    <p style="font-size: var(--small-size); color: var(--text-muted); line-height: 1.5;">Question &rarr; Intent classification &rarr; Entity resolution &rarr; Graph traversal (SQL/PGQ) &rarr; Context assembly &rarr; LLM reasoning</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 08: INDEXING PIPELINE DEEP DIVE
+         =========================================== -->
+    <section class="slide dark-slide" aria-label="Indexing pipeline">
+        <div class="slide-content">
+            <div class="section-num reveal">06 &mdash; Indexing Pipeline</div>
+            <h2 class="reveal">PDF to <span class="accent">Property Graph</span></h2>
+            <div class="pipeline reveal" style="margin-top: var(--content-gap);">
+                <div class="pipeline-step"><span class="step-num">1</span><span class="step-label">Parse</span><span class="step-desc">Extract text per page, detect structure (PyMuPDF)</span></div>
+                <div class="pipeline-arrow">&darr;</div>
+                <div class="pipeline-step"><span class="step-num">2</span><span class="step-label">Structure</span><span class="step-desc">Ollama builds hierarchical section tree</span></div>
+                <div class="pipeline-arrow">&darr;</div>
+                <div class="pipeline-step"><span class="step-num">3</span><span class="step-label">Summarize</span><span class="step-desc">Concise summary per section</span></div>
+                <div class="pipeline-arrow">&darr;</div>
+                <div class="pipeline-step"><span class="step-num">4</span><span class="step-label">Extract</span><span class="step-desc">Identify PERSON, ORG, TECH, CONCEPT entities</span></div>
+                <div class="pipeline-arrow">&darr;</div>
+                <div class="pipeline-step"><span class="step-num">5</span><span class="step-label">Store</span><span class="step-desc">INSERT vertices + edges into Oracle Property Graph</span></div>
+                <div class="pipeline-arrow">&darr;</div>
+                <div class="pipeline-step"><span class="step-num">6</span><span class="step-label">Link</span><span class="step-desc">Discover cross-entity relationships via LLM</span></div>
+                <div class="pipeline-arrow">&darr;</div>
+                <div class="pipeline-step"><span class="step-num">7</span><span class="step-label">Resolve</span><span class="step-desc">Vector-assisted entity deduplication</span></div>
+                <div class="pipeline-arrow">&darr;</div>
+                <div class="pipeline-step"><span class="step-num">8</span><span class="step-label">Enrich</span><span class="step-desc">Automated gap-filling for missing relationships</span></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 09: QUERY PIPELINE DEEP DIVE
+         =========================================== -->
+    <section class="slide white-panel-slide" aria-label="Query pipeline">
+        <div class="split-panel">
+            <div class="panel-left">
+                <div class="section-num reveal">07 &mdash; Query Pipeline</div>
+                <h2 class="reveal" style="font-family: var(--font-display); font-size: var(--h2-size); font-weight: 800;">
+                    Question to <span style="color: var(--accent-blue);">Answer</span>
+                </h2>
+                <div class="pipeline reveal" style="margin-top: var(--content-gap);">
+                    <div class="pipeline-step"><span class="step-num">1</span><span class="step-label">Classify</span><span class="step-desc">Intent: RELATIONSHIP</span></div>
+                    <div class="pipeline-arrow">&darr;</div>
+                    <div class="pipeline-step"><span class="step-num">2</span><span class="step-label">Resolve</span><span class="step-desc">Map to entity_ids</span></div>
+                    <div class="pipeline-arrow">&darr;</div>
+                    <div class="pipeline-step"><span class="step-num">3</span><span class="step-label">Traverse</span><span class="step-desc">GRAPH_TABLE MATCH</span></div>
+                    <div class="pipeline-arrow">&darr;</div>
+                    <div class="pipeline-step"><span class="step-num">4</span><span class="step-label">Assemble</span><span class="step-desc">Rank by hop distance</span></div>
+                    <div class="pipeline-arrow">&darr;</div>
+                    <div class="pipeline-step"><span class="step-num">5</span><span class="step-label">Reason</span><span class="step-desc">LLM over graph context</span></div>
+                </div>
+            </div>
+            <div class="panel-right" style="background: var(--bg-white);">
+                <h2 style="font-size: clamp(0.85rem, 1.5vw, 1.1rem); margin-bottom: var(--content-gap); color: var(--text-dark);" class="reveal">6 Intent Types</h2>
+                <ul class="styled-list reveal">
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">LOOKUP</strong> &mdash; entity neighborhood</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">RELATIONSHIP</strong> &mdash; paths between entities</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">EXPLORATION</strong> &mdash; multi-hop chains</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">COMPARISON</strong> &mdash; side-by-side entity analysis</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">HIERARCHICAL</strong> &mdash; section tree traversal</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">TEMPORAL</strong> &mdash; cross-version diffs</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 10: SQL/PGQ INTRO
+         =========================================== -->
+    <section class="slide dark-slide grid-bg" aria-label="SQL/PGQ intro">
+        <div class="slide-content">
+            <div class="section-num reveal">08 &mdash; SQL/PGQ</div>
+            <h2 class="reveal">The Power of <span class="accent">Oracle Property Graphs</span></h2>
+            <p class="reveal" style="margin-bottom: var(--content-gap);">
+                Every query is standard SQL using <code style="color: var(--accent-red);">GRAPH_TABLE</code> with <code style="color: var(--accent-red);">MATCH</code> patterns. No proprietary graph language. Just SQL.
+            </p>
+            <div class="code-block reveal">
+                <span class="keyword">SELECT</span> e2.name, e2.entity_type, r.relationship<br>
+                <span class="keyword">FROM</span> <span class="function">GRAPH_TABLE</span> (doc_knowledge_graph<br>
+                &nbsp;&nbsp;<span class="keyword">MATCH</span> (e1 <span class="type">IS</span> entity <span class="keyword">WHERE</span> e1.name = <span class="string">'Apple Inc.'</span>)<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-[r <span class="type">IS</span> related_to]-&gt; (e2 <span class="type">IS</span> entity)<br>
+                &nbsp;&nbsp;<span class="keyword">COLUMNS</span> (e2.name, e2.entity_type, r.relationship)<br>
+                );
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 11: SQL/PGQ MULTI-HOP
+         =========================================== -->
+    <section class="slide dark-slide" aria-label="Multi-hop SQL">
+        <div class="slide-content">
+            <div class="section-num reveal">08 &mdash; SQL/PGQ (cont.)</div>
+            <h2 class="reveal">Multi-Hop <span class="accent-blue">Path Queries</span></h2>
+            <p class="reveal" style="margin-bottom: var(--content-gap); color: var(--text-muted); font-size: var(--body-size);">
+                Find how two entities connect through intermediate nodes. The <code style="color: var(--accent-blue);">-&gt;+</code> syntax traverses to any depth in a single query.
+            </p>
+            <div class="code-block reveal">
+                <span class="comment">-- Find entity path: source -> intermediate -> target</span><br>
+                <span class="keyword">SELECT</span> e1.name, r1.relationship, mid.name,<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;r2.relationship, e2.name<br>
+                <span class="keyword">FROM</span> <span class="function">GRAPH_TABLE</span> (doc_knowledge_graph<br>
+                &nbsp;&nbsp;<span class="keyword">MATCH</span> (e1 <span class="type">IS</span> entity <span class="keyword">WHERE</span> e1.name = <span class="param">:source</span>)<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;-[r1 <span class="type">IS</span> related_to]-&gt; (mid <span class="type">IS</span> entity)<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;-[r2 <span class="type">IS</span> related_to]-&gt; (e2 <span class="type">IS</span> entity <span class="keyword">WHERE</span> e2.name = <span class="param">:target</span>)<br>
+                &nbsp;&nbsp;<span class="keyword">COLUMNS</span> (e1.name, r1.relationship, mid.name,<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;r2.relationship, e2.name)<br>
+                );
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 12: RECURSIVE HIERARCHY
+         =========================================== -->
+    <section class="slide white-panel-slide" aria-label="Recursive hierarchy">
+        <div class="split-panel">
+            <div class="panel-left">
+                <div class="section-num reveal">08 &mdash; SQL/PGQ (cont.)</div>
+                <h2 class="reveal" style="font-family: var(--font-display); font-size: var(--h2-size); font-weight: 800;">
+                    Recursive <span style="color: var(--accent-red);">Hierarchy</span>
+                </h2>
+                <div class="code-block reveal" style="margin-top: var(--content-gap);">
+                    <span class="comment">-- ALL descendants of a section</span><br>
+                    <span class="keyword">SELECT</span> child.title, child.summary<br>
+                    <span class="keyword">FROM</span> <span class="function">GRAPH_TABLE</span> (<br>
+                    &nbsp;&nbsp;doc_knowledge_graph<br>
+                    &nbsp;&nbsp;<span class="keyword">MATCH</span> (parent <span class="type">IS</span> section<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">WHERE</span> parent.title = <span class="string">'Intro'</span>)<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;-[h <span class="type">IS</span> parent_of]-&gt;<span style="color: var(--accent-red); font-weight: 700;">+</span> (child <span class="type">IS</span> section)<br>
+                    &nbsp;&nbsp;<span class="keyword">COLUMNS</span> (child.title,<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;child.summary)<br>
+                    );
+                </div>
+            </div>
+            <div class="panel-right" style="background: var(--bg-white);">
+                <h2 style="font-size: clamp(0.85rem, 1.5vw, 1.1rem); margin-bottom: var(--content-gap); color: var(--text-dark);" class="reveal">Why This Matters</h2>
+                <ul class="styled-list reveal">
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">The <code>-&gt;+</code> operator</strong> is SQL/PGQ's recursive path expression</li>
+                    <li style="color: var(--text-muted-dark);">Traverses hierarchy to <strong style="color: var(--text-dark);">any depth</strong> in one query</li>
+                    <li style="color: var(--text-muted-dark);">No recursive CTEs needed</li>
+                    <li style="color: var(--text-muted-dark);">ISO SQL:2023 standard</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 13: PROPERTY GRAPH SCHEMA
+         =========================================== -->
+    <section class="slide dark-slide" aria-label="Schema">
+        <div class="slide-content">
+            <div class="section-num reveal">09 &mdash; Graph Schema</div>
+            <h2 class="reveal">5 Vertex Tables + <span class="accent">7 Edge Labels</span></h2>
+            <div class="schema-row reveal" style="margin-top: var(--content-gap);">
+                <div class="schema-group">
+                    <h3 style="color: var(--accent-red);">Vertices</h3>
+                    <div class="schema-item">documents (doc_id)</div>
+                    <div class="schema-item">sections (section_id)</div>
+                    <div class="schema-item">entities (entity_id)</div>
+                    <div class="schema-item">sessions (session_id)</div>
+                    <div class="schema-item">turns (turn_id)</div>
+                </div>
+                <div class="schema-group">
+                    <h3 style="color: var(--accent-blue);">Edges</h3>
+                    <div class="schema-item blue-border">parent_of (section &rarr; section)</div>
+                    <div class="schema-item blue-border">mentions (section &rarr; entity)</div>
+                    <div class="schema-item blue-border">related_to (entity &rarr; entity)</div>
+                    <div class="schema-item blue-border">turn_entity (turn &rarr; entity)</div>
+                    <div class="schema-item blue-border">turn_section (turn &rarr; section)</div>
+                    <div class="schema-item blue-border">changed_in (entity &rarr; document)</div>
+                    <div class="schema-item blue-border">alias_of (entity &rarr; entity)</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 14: ENTITY EXTRACTION
+         =========================================== -->
+    <section class="slide dark-slide grid-bg" aria-label="Entity extraction">
+        <div class="slide-content">
+            <div class="section-num reveal">10 &mdash; Entity Extraction</div>
+            <h2 class="reveal">LLM-Powered <span class="accent">Entity Discovery</span></h2>
+            <p class="reveal" style="margin-bottom: var(--content-gap); color: var(--text-muted); font-size: var(--body-size);">
+                Ollama identifies structured entities from section text. Each entity gets a type and becomes a graph vertex.
+            </p>
+            <div class="inline-tags reveal">
+                <span class="tag tag-red">PERSON</span>
+                <span class="tag tag-red">ORGANIZATION</span>
+                <span class="tag tag-blue">TECHNOLOGY</span>
+                <span class="tag tag-blue">CONCEPT</span>
+                <span class="tag">LOCATION</span>
+                <span class="tag">EVENT</span>
+                <span class="tag">METRIC</span>
+            </div>
+            <p class="reveal" style="margin-top: var(--content-gap); color: var(--text-muted); font-size: var(--small-size);">
+                From Apple's 10-K: 686 unique entities extracted. "Timothy D. Cook" (PERSON), "iPhone 16 Pro" (TECHNOLOGY), "China mainland" (LOCATION), "Net Sales" (METRIC), "Cybersecurity" (CONCEPT).
+            </p>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 15: ENTITY RESOLUTION
+         =========================================== -->
+    <section class="slide white-panel-slide" aria-label="Entity resolution">
+        <div class="split-panel">
+            <div class="panel-left">
+                <div class="section-num reveal">11 &mdash; Entity Resolution</div>
+                <h2 class="reveal" style="font-family: var(--font-display); font-size: var(--h2-size); font-weight: 800;">
+                    Vector-Assisted <span style="color: var(--accent-red);">Dedup</span>
+                </h2>
+                <p class="reveal" style="color: var(--text-muted); font-size: var(--body-size); line-height: 1.6; margin-top: var(--content-gap); max-width: 400px;">
+                    Different documents call the same entity by different names. Ollama embeddings + Oracle VECTOR_DISTANCE find candidates, then LLM confirms merges.
+                </p>
+            </div>
+            <div class="panel-right" style="background: var(--bg-white);">
+                <div class="code-block reveal" style="background: #f5f5f5; border-color: #e0e0e0; color: var(--text-dark); margin-bottom: var(--content-gap);">
+                    <span style="color: #666;">entity_resolution:</span><br>
+                    &nbsp;&nbsp;<span style="color: #333;">enabled:</span> <span style="color: #0066cc;">true</span><br>
+                    &nbsp;&nbsp;<span style="color: #333;">embedding_model:</span> <span style="color: #c7254e;">"nomic-embed-text"</span><br>
+                    &nbsp;&nbsp;<span style="color: #333;">similarity_threshold:</span> <span style="color: #0066cc;">0.3</span><br>
+                    &nbsp;&nbsp;<span style="color: #333;">auto_confirm_threshold:</span> <span style="color: #0066cc;">0.15</span>
+                </div>
+                <p class="reveal" style="font-size: var(--small-size); color: var(--text-muted-dark); line-height: 1.5;">
+                    Vectors serve the graph here. They're used strictly for entity name disambiguation, not for retrieval.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 16: GRAPH ENRICHMENT
+         =========================================== -->
+    <section class="slide dark-slide" aria-label="Graph enrichment">
+        <div class="slide-content">
+            <div class="section-num reveal">12 &mdash; Enrichment Agent</div>
+            <h2 class="reveal">Automated <span class="accent-blue">Gap-Filling</span></h2>
+            <p class="reveal" style="margin-bottom: var(--content-gap); color: var(--text-muted); font-size: var(--body-size); max-width: 700px;">
+                A post-indexing pass finds isolated entities and co-occurring pairs that share sections but aren't linked. For each candidate, a focused LLM prompt examines shared text and discovers relationships.
+            </p>
+            <div class="code-block reveal">
+                <span class="comment"># Full enrichment pass</span><br>
+                python run.py enrich<br><br>
+                <span class="comment"># Preview candidates without writing</span><br>
+                python run.py enrich --dry-run<br><br>
+                <span class="comment"># Limit scope</span><br>
+                python run.py enrich --max-candidates 50
+            </div>
+            <p class="reveal" style="margin-top: var(--element-gap); color: var(--text-muted); font-size: var(--small-size);">
+                Enriched edges tagged with <code style="color: var(--accent-blue);">edge_source='ENRICHMENT'</code> + confidence score.
+            </p>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 17: TEMPORAL VERSIONING
+         =========================================== -->
+    <section class="slide dark-slide grid-bg" aria-label="Temporal versioning">
+        <div class="slide-content">
+            <div class="section-num reveal">13 &mdash; Temporal Versioning</div>
+            <h2 class="reveal">Track Changes <span class="accent">Across Versions</span></h2>
+            <p class="reveal" style="margin-bottom: var(--content-gap); color: var(--text-muted); font-size: var(--body-size); max-width: 700px;">
+                Index multiple versions of the same document. The system computes diffs: which entities APPEARED, DISAPPEARED, or remained STABLE.
+            </p>
+            <div class="code-block reveal">
+                python run.py index report-2023.pdf \<br>
+                &nbsp;&nbsp;--doc-group annual-report --doc-version 1<br><br>
+                python run.py index report-2024.pdf \<br>
+                &nbsp;&nbsp;--doc-group annual-report --doc-version 2
+            </div>
+            <div class="inline-tags reveal" style="margin-top: var(--content-gap);">
+                <span class="tag" style="border-color: #22c55e; color: #22c55e;">APPEARED</span>
+                <span class="tag" style="border-color: #ef4444; color: #ef4444;">DISAPPEARED</span>
+                <span class="tag" style="border-color: #eab308; color: #eab308;">MODIFIED</span>
+                <span class="tag" style="border-color: #6b7280; color: #6b7280;">STABLE</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 18: LIVE DEMO STATS
+         =========================================== -->
+    <section class="slide dark-slide" aria-label="Live demo">
+        <div class="slide-content">
+            <div class="section-num reveal">14 &mdash; Live Demo</div>
+            <h2 class="reveal">Apple 10-K 2024: <span class="accent">By the Numbers</span></h2>
+            <div class="stat-grid reveal" style="margin-top: var(--content-gap);">
+                <div class="stat-box">
+                    <div class="stat-num">121</div>
+                    <div class="stat-label">Pages Indexed</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-num">686</div>
+                    <div class="stat-label">Entities Extracted</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-num">951</div>
+                    <div class="stat-label">Mention Edges</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-num">808</div>
+                    <div class="stat-label">Graph Nodes</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-num">1,105</div>
+                    <div class="stat-label">Graph Edges</div>
+                </div>
+            </div>
+            <p class="reveal" style="margin-top: var(--content-gap); color: var(--text-muted); font-size: var(--small-size);">
+                Full SEC 10-K filing. Organizations, products, people, locations, concepts, financials, all linked in one unified graph.
+            </p>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 19: TECH STACK
+         =========================================== -->
+    <section class="slide white-panel-slide" aria-label="Tech stack">
+        <div class="split-panel">
+            <div class="panel-left">
+                <div class="section-num reveal">15 &mdash; Tech Stack</div>
+                <h2 class="reveal" style="font-family: var(--font-display); font-size: var(--h2-size); font-weight: 800;">
+                    Built on <span style="color: var(--accent-red);">Oracle</span>
+                </h2>
+                <div class="feature-grid reveal" style="margin-top: var(--content-gap); grid-template-columns: 1fr;">
+                    <div class="feature-card" style="border-left: 3px solid var(--accent-red);">
+                        <h3>Oracle Database 26ai Free</h3>
+                        <p>SQL Property Graphs, GRAPH_TABLE, ISO SQL:2023</p>
+                    </div>
+                    <div class="feature-card" style="border-left: 3px solid var(--accent-blue);">
+                        <h3>Ollama</h3>
+                        <p>Local LLM inference + embeddings. No API keys.</p>
+                    </div>
+                    <div class="feature-card" style="border-left: 3px solid var(--text-muted);">
+                        <h3>Python 3.11+ / FastAPI</h3>
+                        <p>Backend + REST API + python-oracledb driver</p>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-right" style="background: var(--bg-white);">
+                <h2 style="font-size: clamp(0.85rem, 1.5vw, 1.1rem); margin-bottom: var(--content-gap); color: var(--text-dark);" class="reveal">Full Stack</h2>
+                <ul class="styled-list reveal">
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">Database</strong> &mdash; Oracle 26ai Free (SQL/PGQ)</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">Graph Model</strong> &mdash; CREATE PROPERTY GRAPH</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">LLM</strong> &mdash; Ollama (gemma3, llama3.1, etc.)</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">Embeddings</strong> &mdash; nomic-embed-text</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">Visualization</strong> &mdash; D3.js v7</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">PDF Parsing</strong> &mdash; PyMuPDF, PyPDF2</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 20: QUICK START
+         =========================================== -->
+    <section class="slide dark-slide" aria-label="Quick start">
+        <div class="slide-content">
+            <div class="section-num reveal">16 &mdash; Quick Start</div>
+            <h2 class="reveal">Up and Running in <span class="accent">4 Steps</span></h2>
+            <div class="pipeline reveal" style="margin-top: var(--content-gap); max-width: 650px;">
+                <div class="pipeline-step"><span class="step-num">1</span><span class="step-label">Oracle</span><span class="step-desc">docker compose up -d</span></div>
+                <div class="pipeline-arrow">&darr;</div>
+                <div class="pipeline-step"><span class="step-num">2</span><span class="step-label">Install</span><span class="step-desc">pip install oracledb httpx pyyaml tiktoken PyMuPDF fastapi</span></div>
+                <div class="pipeline-arrow">&darr;</div>
+                <div class="pipeline-step"><span class="step-num">3</span><span class="step-label">Init</span><span class="step-desc">python run.py init</span></div>
+                <div class="pipeline-arrow">&darr;</div>
+                <div class="pipeline-step"><span class="step-num">4</span><span class="step-label">Index</span><span class="step-desc">python run.py index /path/to/doc.pdf</span></div>
+            </div>
+            <p class="reveal" style="margin-top: var(--content-gap); color: var(--text-muted); font-size: var(--small-size);">
+                Requires: Docker (for Oracle 26ai Free), Python 3.11+, Ollama with any model pulled.
+            </p>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 21: API ENDPOINTS
+         =========================================== -->
+    <section class="slide dark-slide grid-bg" aria-label="API endpoints">
+        <div class="slide-content">
+            <div class="section-num reveal">17 &mdash; REST API</div>
+            <h2 class="reveal">12 FastAPI <span class="accent-blue">Endpoints</span></h2>
+            <table class="comparison-table reveal" style="margin-top: var(--content-gap);">
+                <thead>
+                    <tr><th>Method</th><th>Path</th><th>Description</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>GET</td><td>/</td><td>D3.js visualization</td></tr>
+                    <tr><td>GET</td><td>/api/graph</td><td>Full knowledge graph (nodes + edges)</td></tr>
+                    <tr><td>GET</td><td>/api/query?q=...</td><td>Natural-language graph query</td></tr>
+                    <tr><td>GET</td><td>/api/documents</td><td>All indexed documents</td></tr>
+                    <tr><td>GET</td><td>/api/entities</td><td>All extracted entities</td></tr>
+                    <tr><td>GET</td><td>/api/sessions</td><td>Conversation sessions</td></tr>
+                </tbody>
+            </table>
+            <p class="reveal" style="margin-top: var(--element-gap); color: var(--text-muted); font-size: var(--small-size);">
+                + 6 more: document sections, entity sections, entity relations, versioned graph, session turns, continuation queries.
+            </p>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 22: D3.js VISUALIZATION
+         =========================================== -->
+    <section class="slide white-panel-slide" aria-label="Visualization">
+        <div class="split-panel">
+            <div class="panel-left">
+                <div class="section-num reveal">18 &mdash; Visualization</div>
+                <h2 class="reveal" style="font-family: var(--font-display); font-size: var(--h2-size); font-weight: 800;">
+                    Interactive <span style="color: var(--accent-blue);">D3.js Graph</span>
+                </h2>
+                <p class="reveal" style="color: var(--text-muted); font-size: var(--body-size); line-height: 1.6; margin-top: var(--content-gap); max-width: 400px;">
+                    Force-directed graph with color-coded nodes. Documents (blue), sections (green), entities (orange). Query paths animate on the graph in real time.
+                </p>
+            </div>
+            <div class="panel-right" style="background: var(--bg-white);">
+                <h2 style="font-size: clamp(0.85rem, 1.5vw, 1.1rem); margin-bottom: var(--content-gap); color: var(--text-dark);" class="reveal">Features</h2>
+                <ul class="styled-list reveal">
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">Query bar</strong> &mdash; ask questions, see traversal paths</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">Replay</strong> &mdash; step through at 400ms/step</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">Timeline slider</strong> &mdash; scrub document versions</li>
+                    <li style="color: var(--text-muted-dark);"><strong style="color: var(--text-dark);">SQL panel</strong> &mdash; see exact GRAPH_TABLE queries</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 23: TESTING
+         =========================================== -->
+    <section class="slide dark-slide" aria-label="Testing">
+        <div class="slide-content">
+            <div class="section-num reveal">19 &mdash; Testing</div>
+            <h2 class="reveal"><span class="accent">179</span> Unit Tests</h2>
+            <p class="reveal" style="margin-bottom: var(--content-gap); color: var(--text-muted); font-size: var(--body-size); max-width: 600px;">
+                Every module fully mocked. No running Oracle or Ollama needed. Just <code style="color: var(--text-light);">pytest tests/ -v</code>.
+            </p>
+            <div class="feature-grid reveal" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));">
+                <div class="feature-card"><h3>test_graph.py</h3><p>28 tests: CRUD + multi-hop + enrichment</p></div>
+                <div class="feature-card"><h3>test_query.py</h3><p>26 tests: multi-hop engine + sessions</p></div>
+                <div class="feature-card"><h3>test_entity_resolver.py</h3><p>20 tests: vector-assisted dedup</p></div>
+                <div class="feature-card"><h3>test_temporal.py</h3><p>16 tests: versioning + diffs</p></div>
+                <div class="feature-card"><h3>test_schema.py</h3><p>13 tests: DDL validation</p></div>
+                <div class="feature-card"><h3>test_api.py</h3><p>13 tests: all FastAPI endpoints</p></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 24: WHAT CHANGED FROM PAGEINDEX
+         =========================================== -->
+    <section class="slide dark-slide grid-bg" aria-label="What changed">
+        <div class="slide-content">
+            <div class="section-num reveal">20 &mdash; vs. PageIndex</div>
+            <h2 class="reveal">What Changed from <span class="accent">Upstream</span></h2>
+            <table class="comparison-table reveal" style="margin-top: var(--content-gap);">
+                <thead>
+                    <tr><th></th><th>PageIndex</th><th class="highlight-col">OraclePageIndex v0.2.0</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Storage</td><td>JSON files on disk</td><td class="highlight-col">Oracle Property Graph</td></tr>
+                    <tr><td>LLM</td><td>OpenAI GPT-4o</td><td class="highlight-col">Ollama (fully local)</td></tr>
+                    <tr><td>Query</td><td>LLM-driven tree nav</td><td class="highlight-col">6 intent-specific traversals</td></tr>
+                    <tr><td>Entities</td><td>None</td><td class="highlight-col">Full extraction + dedup</td></tr>
+                    <tr><td>Visualization</td><td>None</td><td class="highlight-col">D3.js with query overlay</td></tr>
+                    <tr><td>Tests</td><td>None</td><td class="highlight-col">179 mocked unit tests</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- ===========================================
+         SLIDE 25: CLOSING
+         =========================================== -->
+    <section class="slide closing-slide grid-bg" aria-label="Closing">
+        <div class="slide-content">
+            <h2 class="reveal"><span style="color: var(--accent-red);">Oracle</span>PageIndex</h2>
+            <p class="reveal" style="color: var(--text-muted); font-size: var(--body-size); margin-top: var(--element-gap); max-width: 500px;">
+                Graph-powered document intelligence. Oracle SQL Property Graphs. Fully local, fully open-source.
+            </p>
+            <div class="link-row reveal">
+                <a href="https://github.com/jasperan/OraclePageIndex" class="link-btn link-btn-red">GitHub</a>
+                <a href="https://pypi.org/project/oracle-pageindex/" class="link-btn link-btn-blue">PyPI</a>
+                <a href="https://www.oracle.com/database/free/" class="link-btn link-btn-outline">Oracle Free</a>
+                <a href="https://ollama.com/" class="link-btn link-btn-outline">Ollama</a>
+            </div>
+            <p class="reveal" style="color: var(--text-muted); font-size: var(--small-size); margin-top: var(--content-gap);">
+                MIT License &middot; jasperan
+            </p>
+        </div>
+    </section>
+
+    <!-- ===========================================
+       SLIDE PRESENTATION CONTROLLER
+       =========================================== -->
+    <script>
+        class SlidePresentation {
+            constructor() {
+                this.slides = document.querySelectorAll('.slide');
+                this.currentSlide = 0;
+                this.totalSlides = this.slides.length;
+                this.isScrolling = false;
+                this.touchStartY = 0;
+                this.touchStartX = 0;
+
+                this.setupIntersectionObserver();
+                this.setupKeyboardNav();
+                this.setupTouchNav();
+                this.setupProgressBar();
+                this.setupNavDots();
+                this.setupScrollListener();
+            }
+
+            /* --- Intersection Observer: triggers .visible for animations --- */
+            setupIntersectionObserver() {
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            entry.target.classList.add('visible');
+                            const idx = Array.from(this.slides).indexOf(entry.target);
+                            if (idx !== -1) {
+                                this.currentSlide = idx;
+                                this.updateCounter();
+                                this.updateNavDots();
+                                this.updateProgressBar();
+                            }
+                        }
+                    });
+                }, { threshold: 0.5 });
+
+                this.slides.forEach(slide => observer.observe(slide));
+            }
+
+            /* --- Keyboard Navigation --- */
+            setupKeyboardNav() {
+                document.addEventListener('keydown', (e) => {
+                    switch (e.key) {
+                        case 'ArrowDown':
+                        case 'ArrowRight':
+                        case ' ':
+                        case 'PageDown':
+                            e.preventDefault();
+                            this.goToSlide(this.currentSlide + 1);
+                            break;
+                        case 'ArrowUp':
+                        case 'ArrowLeft':
+                        case 'PageUp':
+                            e.preventDefault();
+                            this.goToSlide(this.currentSlide - 1);
+                            break;
+                        case 'Home':
+                            e.preventDefault();
+                            this.goToSlide(0);
+                            break;
+                        case 'End':
+                            e.preventDefault();
+                            this.goToSlide(this.totalSlides - 1);
+                            break;
+                    }
+                });
+            }
+
+            /* --- Touch / Swipe Support --- */
+            setupTouchNav() {
+                document.addEventListener('touchstart', (e) => {
+                    this.touchStartY = e.touches[0].clientY;
+                    this.touchStartX = e.touches[0].clientX;
+                }, { passive: true });
+
+                document.addEventListener('touchend', (e) => {
+                    const deltaY = this.touchStartY - e.changedTouches[0].clientY;
+                    const deltaX = this.touchStartX - e.changedTouches[0].clientX;
+
+                    /* Only respond to vertical swipes (ignore horizontal) */
+                    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
+                        if (deltaY > 0) {
+                            this.goToSlide(this.currentSlide + 1);
+                        } else {
+                            this.goToSlide(this.currentSlide - 1);
+                        }
+                    }
+                }, { passive: true });
+            }
+
+            /* --- Progress Bar --- */
+            setupProgressBar() {
+                this.progressBar = document.getElementById('progressBar');
+                this.updateProgressBar();
+            }
+
+            updateProgressBar() {
+                if (this.progressBar) {
+                    const pct = ((this.currentSlide + 1) / this.totalSlides) * 100;
+                    this.progressBar.style.width = pct + '%';
+                }
+            }
+
+            /* --- Navigation Dots --- */
+            setupNavDots() {
+                const container = document.getElementById('navDots');
+                if (!container) return;
+
+                this.slides.forEach((_, i) => {
+                    const dot = document.createElement('button');
+                    dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+                    dot.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+                    dot.addEventListener('click', () => this.goToSlide(i));
+                    container.appendChild(dot);
+                });
+
+                this.navDotEls = container.querySelectorAll('.nav-dot');
+            }
+
+            updateNavDots() {
+                if (!this.navDotEls) return;
+                this.navDotEls.forEach((dot, i) => {
+                    dot.classList.toggle('active', i === this.currentSlide);
+                });
+            }
+
+            /* --- Slide Counter --- */
+            updateCounter() {
+                const counter = document.getElementById('slideCounter');
+                if (counter) {
+                    const cur = String(this.currentSlide + 1).padStart(2, '0');
+                    const total = String(this.totalSlides).padStart(2, '0');
+                    counter.textContent = cur + ' / ' + total;
+                }
+            }
+
+            /* --- Scroll Listener (keeps state in sync) --- */
+            setupScrollListener() {
+                let scrollTimeout;
+                document.addEventListener('scroll', () => {
+                    clearTimeout(scrollTimeout);
+                    scrollTimeout = setTimeout(() => {
+                        this.updateProgressBar();
+                    }, 100);
+                }, { passive: true });
+            }
+
+            /* --- Navigate to Slide --- */
+            goToSlide(index) {
+                if (index < 0 || index >= this.totalSlides) return;
+                this.slides[index].scrollIntoView({ behavior: 'smooth' });
+                this.currentSlide = index;
+                this.updateCounter();
+                this.updateNavDots();
+                this.updateProgressBar();
+            }
+        }
+
+        /* Initialize on DOM ready */
+        document.addEventListener('DOMContentLoaded', () => {
+            new SlidePresentation();
+        });
+    </script>
+
+</body>
+</html>
