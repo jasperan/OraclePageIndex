@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "oracle-pageindex"
@@ -19,5 +19,17 @@ dependencies = [
     "uvicorn>=0.34.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
 [project.scripts]
 oracle-pageindex = "oracle_pageindex.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["oracle_pageindex*", "api*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
