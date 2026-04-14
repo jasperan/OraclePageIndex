@@ -107,26 +107,33 @@ def cmd_query(args):
     try:
         graph = GraphStore(db)
         engine = QueryEngine(llm=llm, graph=graph)
-        result = engine.query(args.question)
+        session_id = getattr(args, "session_id", None)
+        result = engine.query(args.question, session_id=session_id)
 
         print("\nAnswer:")
-        print(result.get("answer", "No answer returned."))
+        print(result.answer or "No answer returned.")
 
-        sources = result.get("sources", [])
-        if sources:
+        if result.session_id is not None:
+            print(f"\nSession ID: {result.session_id}")
+
+        if result.sources:
             print("\nSources:")
-            for src in sources:
+            for src in result.sources:
                 title = src.get("title", "Untitled")
                 doc = src.get("doc_name", "")
                 print(f"  - {title}" + (f" ({doc})" if doc else ""))
 
-        related = result.get("related_entities", [])
-        if related:
+        if result.related_entities:
             print("\nRelated entities:")
-            for ent in related:
+            for ent in result.related_entities:
                 name = ent.get("name", "")
                 etype = ent.get("entity_type", "")
                 print(f"  - {name}" + (f" [{etype}]" if etype else ""))
+
+        if result.graph_queries:
+            print(f"\nGraph queries executed: {len(result.graph_queries)}")
+            for gq in result.graph_queries:
+                print(f"  - {gq.purpose} ({gq.rows_returned} rows, {gq.execution_ms:.0f}ms)")
     finally:
         db.close()
 
@@ -228,6 +235,10 @@ def build_parser():
     # --- query ---
     p_query = sub.add_parser("query", help="Query the knowledge graph.")
     p_query.add_argument("question", type=str, help="Natural-language question.")
+    p_query.add_argument(
+        "--session-id", type=int, default=None,
+        help="Continue a conversation session (pass session_id from prior query).",
+    )
 
     # --- enrich ---
     p_enrich = sub.add_parser("enrich", help="Run the graph enrichment agent.")

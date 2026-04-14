@@ -1,7 +1,7 @@
 # Ollama LLM configuration
 ollama:
   base_url: "http://localhost:11434"
-  model: "gemma3"
+  model: "gemma4"
   temperature: 0
   num_ctx: 16384
 
@@ -18,10 +18,10 @@ oracle:
 toc_check_page_num: 5
 max_token_num_each_node: 20000
 if_add_node_id: "yes"
-if_add_node_summary: "no"
+if_add_node_summary: "yes"
 if_add_doc_description: "no"
 if_add_node_text: "no"
-if_extract_entities: "no"
+if_extract_entities: "yes"
 
 # Entity resolution configuration
 # Uses Oracle VECTOR_DISTANCE on name embeddings to find duplicate entities

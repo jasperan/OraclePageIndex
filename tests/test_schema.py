@@ -96,7 +96,7 @@ def test_property_graph_has_5_vertices():
     # Count LABEL keywords in VERTEX TABLES section
     vertex_section = re.search(r"VERTEX TABLES\s*\((.*?)\)\s*EDGE TABLES", pg_body, re.DOTALL)
     assert vertex_section, "VERTEX TABLES section not found"
-    labels = re.findall(r"LABEL\s+\w+", vertex_section.group(1))
+    labels = re.findall(r'LABEL\s+(?:"\w+"|\w+)', vertex_section.group(1))
     assert len(labels) == 5, f"Expected 5 vertex labels, found {len(labels)}: {labels}"
 
 

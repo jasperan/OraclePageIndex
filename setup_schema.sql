@@ -204,7 +204,7 @@ CREATE PROPERTY GRAPH doc_knowledge_graph
             PROPERTIES ALL COLUMNS,
         sessions
             KEY (session_id)
-            LABEL session
+            LABEL "SESSION"
             PROPERTIES ALL COLUMNS,
         turns
             KEY (turn_id)

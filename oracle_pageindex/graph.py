@@ -205,20 +205,26 @@ class GraphStore:
     # ------------------------------------------------------------------
 
     def find_similar_entities(self, embedding, entity_type, threshold, exclude_id=None):
-        """Find entities with similar name embeddings using VECTOR_DISTANCE."""
-        sql = """
+        """Find entities with similar name embeddings using VECTOR_DISTANCE.
+
+        The embedding is serialized to a bracket string (e.g. ``[0.1,0.2,...]``)
+        and cast to ``VECTOR`` inline because ``python-oracledb`` cannot bind
+        Python lists as parameters in plain SQL SELECT statements (ORA-01484).
+        """
+        vec_literal = "[" + ",".join(str(float(v)) for v in embedding) + "]"
+        sql = f"""
             SELECT entity_id, name, entity_type,
-                   VECTOR_DISTANCE(name_embedding, :embedding, COSINE) AS distance
+                   VECTOR_DISTANCE(name_embedding, TO_VECTOR(:vec_str), COSINE) AS distance
             FROM entities
             WHERE entity_type = :entity_type
               AND name_embedding IS NOT NULL
               AND entity_id != :exclude_id
-              AND VECTOR_DISTANCE(name_embedding, :embedding, COSINE) < :threshold
+              AND VECTOR_DISTANCE(name_embedding, TO_VECTOR(:vec_str), COSINE) < :threshold
             ORDER BY distance
             FETCH FIRST 5 ROWS ONLY
         """
         return self.db.fetchall(sql, {
-            "embedding": embedding,
+            "vec_str": vec_literal,
             "entity_type": entity_type,
             "exclude_id": exclude_id or -1,
             "threshold": threshold,
@@ -244,8 +250,9 @@ class GraphStore:
 
     def update_entity_embedding(self, entity_id, embedding):
         """Store the name embedding vector for an entity."""
-        sql = "UPDATE entities SET name_embedding = :embedding WHERE entity_id = :entity_id"
-        self.db.execute(sql, {"embedding": embedding, "entity_id": entity_id})
+        vec_literal = "[" + ",".join(str(float(v)) for v in embedding) + "]"
+        sql = "UPDATE entities SET name_embedding = TO_VECTOR(:vec_str) WHERE entity_id = :entity_id"
+        self.db.execute(sql, {"vec_str": vec_literal, "entity_id": entity_id})
 
     def get_entity_sections(self, entity_name):
         """Return all sections that mention an entity (by entity name), with document info.
@@ -465,16 +472,13 @@ class GraphStore:
         Deduplicates sections and entities from the flat row set.
         """
         sql = """
-            SELECT s.section_id, s.title, s.text_content, s.depth_level,
-                   m.relevance,
-                   e2.entity_id AS co_entity_id, e2.name AS co_entity_name,
-                   e2.entity_type AS co_entity_type
+            SELECT *
             FROM GRAPH_TABLE (doc_knowledge_graph
                 MATCH (e1 IS entity WHERE e1.entity_id = :entity_id)
                       <-[m IS mentions]- (s IS section)
                       -[m2 IS mentions]-> (e2 IS entity)
                 COLUMNS (
-                    s.section_id, s.title, s.text_content, s.depth_level,
+                    s.section_id, s.title, s.depth_level,
                     m.relevance,
                     e2.entity_id AS co_entity_id, e2.name AS co_entity_name,
                     e2.entity_type AS co_entity_type
@@ -495,7 +499,6 @@ class GraphStore:
                 seen_sections[sid] = {
                     "section_id": sid,
                     "title": row["title"],
-                    "text_content": row["text_content"],
                     "depth_level": row["depth_level"],
                     "relevance": row["relevance"],
                 }
@@ -574,18 +577,17 @@ class GraphStore:
         Uses GRAPH_TABLE MATCH to traverse: source -[r1]-> mid -[r2]-> target.
         """
         sql = """
-            SELECT e1.name AS source_name,
-                   mid.entity_id AS mid_id, mid.name AS mid_name, mid.entity_type AS mid_type,
-                   r1.relationship AS r1_type,
-                   e2.name AS target_name,
-                   r2.relationship AS r2_type
+            SELECT *
             FROM GRAPH_TABLE (doc_knowledge_graph
                 MATCH (e1 IS entity WHERE LOWER(e1.name) LIKE '%' || LOWER(:source_name) || '%')
                       -[r1 IS related_to]-> (mid IS entity)
                       -[r2 IS related_to]-> (e2 IS entity WHERE LOWER(e2.name) LIKE '%' || LOWER(:target_name) || '%')
                 COLUMNS (
-                    e1.name, mid.entity_id, mid.name, mid.entity_type,
-                    r1.relationship, e2.name, r2.relationship
+                    e1.name AS source_name,
+                    mid.entity_id AS mid_id, mid.name AS mid_name, mid.entity_type AS mid_type,
+                    r1.relationship AS r1_type,
+                    e2.name AS target_name,
+                    r2.relationship AS r2_type
                 )
             )
             FETCH FIRST 10 ROWS ONLY
@@ -612,25 +614,29 @@ class GraphStore:
         1-hop and 2-hop results.
         """
         sql_1hop = """
-            SELECT e2.entity_id, e2.name, e2.entity_type, r.relationship, 1 AS hops
+            SELECT *
             FROM GRAPH_TABLE (doc_knowledge_graph
                 MATCH (e1 IS entity WHERE e1.entity_id = :entity_id)
                       -[r IS related_to]-> (e2 IS entity)
-                COLUMNS (e2.entity_id, e2.name, e2.entity_type, r.relationship)
+                COLUMNS (e2.entity_id AS entity_id, e2.name AS name,
+                         e2.entity_type AS entity_type, r.relationship AS relationship,
+                         1 AS hops)
             )
         """
 
         if max_hops >= 2:
             sql_2hop = """
             UNION
-            SELECT e3.entity_id, e3.name, e3.entity_type, r2.relationship, 2 AS hops
+            SELECT *
             FROM GRAPH_TABLE (doc_knowledge_graph
                 MATCH (e1 IS entity WHERE e1.entity_id = :entity_id)
                       -[r1 IS related_to]-> (mid IS entity)
                       -[r2 IS related_to]-> (e3 IS entity)
-                COLUMNS (e3.entity_id, e3.name, e3.entity_type, r2.relationship)
+                COLUMNS (e3.entity_id AS entity_id, e3.name AS name,
+                         e3.entity_type AS entity_type, r2.relationship AS relationship,
+                         2 AS hops)
             )
-            WHERE e3.entity_id != :entity_id
+            WHERE entity_id != :entity_id
             """
             sql = sql_1hop + sql_2hop
         else:
@@ -701,7 +707,12 @@ class GraphStore:
             FETCH FIRST 3 ROWS ONLY
         """
         rows = self.db.fetchall(sql, {"e1": entity1_id, "e2": entity2_id})
-        return "\n\n".join(r.get("text_content", "") for r in rows if r.get("text_content"))
+        texts = []
+        for r in rows:
+            tc = r.get("text_content")
+            if tc is not None:
+                texts.append(tc.read() if hasattr(tc, "read") else str(tc))
+        return "\n\n".join(texts)
 
     def insert_enriched_relationship(self, source_id, target_id, relationship, confidence=0.8):
         """Insert a relationship edge marked as enrichment-generated."""

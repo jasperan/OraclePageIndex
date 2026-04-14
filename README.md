@@ -564,7 +564,7 @@ Edit `oracle_pageindex/config.yaml`:
 ```yaml
 ollama:
   base_url: "http://localhost:11434"
-  model: "gemma3"          # Any Ollama model
+  model: "gemma4"          # Any Ollama model
   temperature: 0
 
 oracle:
@@ -604,7 +604,7 @@ entity_resolution:
 
 # Testing
 
-179 unit tests covering all modules. All tests use mocked Oracle and Ollama connections, no running services needed.
+179 unit tests covering all modules. All tests use mocked Oracle and Ollama connections, no running services needed. The system has also been [validated end-to-end](docs/e2e-report.md) against a live Oracle 26ai Free instance with all 33+ graph functions passing.
 
 ```bash
 pytest tests/ -v

@@ -73,6 +73,7 @@ SKILLS_EXECUTION_SUMMARY.md
 docs/plans/
 docs/*.md
 !docs/README.md
+!docs/e2e-report.md
 *_FEATURES.md
 *_ENHANCEMENTS.md
 *_REPORT.md
