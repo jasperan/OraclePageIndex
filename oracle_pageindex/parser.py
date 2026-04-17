@@ -6,25 +6,20 @@ OpenAI for all LLM interactions.  Pure parsing logic (token counting,
 PDF reading, tree manipulation) lives in utils.py.
 """
 
-import asyncio
-import copy
 import json
 import logging
-import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from .llm import OllamaClient
+from .llm import OllamaClient, OllamaError
 from .utils import (
     add_node_text,
     add_preface_if_needed,
     convert_physical_index_to_int,
     count_tokens,
     extract_json,
-    get_number_of_pages,
     get_page_tokens,
     get_pdf_name,
     get_text_of_pdf_pages_with_labels,
-    list_to_tree,
     post_processing,
     structure_to_list,
     write_node_id,

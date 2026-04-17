@@ -212,7 +212,7 @@ class GraphStore:
         Python lists as parameters in plain SQL SELECT statements (ORA-01484).
         """
         vec_literal = "[" + ",".join(str(float(v)) for v in embedding) + "]"
-        sql = f"""
+        sql = """
             SELECT entity_id, name, entity_type,
                    VECTOR_DISTANCE(name_embedding, TO_VECTOR(:vec_str), COSINE) AS distance
             FROM entities

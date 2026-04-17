@@ -178,7 +178,7 @@ def run_baseline_rag(pdf_path: str, questions: list[str]) -> dict:
 
     with open("scripts/baseline_rag_results.json", "w") as f:
         json.dump(report, f, indent=2)
-    print(f"\nResults written to scripts/baseline_rag_results.json")
+    print("\nResults written to scripts/baseline_rag_results.json")
     return report
 
 

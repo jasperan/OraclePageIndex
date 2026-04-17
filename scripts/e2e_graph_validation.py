@@ -158,7 +158,7 @@ class E2EValidator:
         }
         with open("scripts/e2e_results.json", "w") as f:
             json.dump(report, f, indent=2)
-        print(f"\nDetailed results written to scripts/e2e_results.json")
+        print("\nDetailed results written to scripts/e2e_results.json")
 
     def test_basic_queries(self):
         """3B: Basic query methods."""

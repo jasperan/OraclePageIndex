@@ -476,7 +476,7 @@ class QueryEngine:
                 try:
                     self.graph.insert_turn_entity(turn_id, eid, "PRIMARY")
                 except Exception:
-                    pass
+                    logger.debug("Failed to record PRIMARY turn entity %s", eid, exc_info=True)
         for ent in related:
             eid = ent.get("entity_id")
             if eid and eid not in seen:
@@ -484,7 +484,7 @@ class QueryEngine:
                 try:
                     self.graph.insert_turn_entity(turn_id, eid, "REFERENCED")
                 except Exception:
-                    pass
+                    logger.debug("Failed to record REFERENCED turn entity %s", eid, exc_info=True)
 
     def _record_turn_sections(self, turn_id: int | None, sections: list[dict]) -> None:
         """Record which sections a turn used for context. Failures are silently ignored."""
@@ -496,7 +496,7 @@ class QueryEngine:
                 try:
                     self.graph.insert_turn_section(turn_id, sid, rank_score=1.0 - (i * 0.1))
                 except Exception:
-                    pass
+                    logger.debug("Failed to record turn section %s", sid, exc_info=True)
 
     def _resolve_entity_ids(self, entity_names: list[str]) -> list[dict]:
         """Resolve entity name strings to entity records with IDs."""

@@ -37,6 +37,25 @@ def get_config(args):
     return loader.load(overrides if overrides else None)
 
 
+def _make_llm(cfg):
+    """Build an OllamaClient from config."""
+    return OllamaClient(
+        base_url=cfg.ollama_base_url,
+        model=cfg.ollama_model,
+        temperature=cfg.ollama_temperature,
+        num_ctx=getattr(cfg, "ollama_num_ctx", 16384),
+    )
+
+
+def _make_db(cfg):
+    """Build an OracleDB from config."""
+    return OracleDB(
+        user=cfg.oracle_user,
+        password=cfg.oracle_password,
+        dsn=cfg.oracle_dsn,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Subcommand handlers
 # ---------------------------------------------------------------------------
@@ -44,11 +63,7 @@ def get_config(args):
 def cmd_init(args):
     """Initialize the Oracle database schema."""
     cfg = get_config(args)
-    db = OracleDB(
-        user=cfg.oracle_user,
-        password=cfg.oracle_password,
-        dsn=cfg.oracle_dsn,
-    )
+    db = _make_db(cfg)
     try:
         db.init_schema()
         print("Schema initialized successfully.")
@@ -61,17 +76,8 @@ def cmd_index(args):
     from oracle_pageindex.indexer import Indexer
 
     cfg = get_config(args)
-    llm = OllamaClient(
-        base_url=cfg.ollama_base_url,
-        model=cfg.ollama_model,
-        temperature=cfg.ollama_temperature,
-        num_ctx=getattr(cfg, 'ollama_num_ctx', 16384),
-    )
-    db = OracleDB(
-        user=cfg.oracle_user,
-        password=cfg.oracle_password,
-        dsn=cfg.oracle_dsn,
-    )
+    llm = _make_llm(cfg)
+    db = _make_db(cfg)
     try:
         indexer = Indexer(llm=llm, db=db, opt=cfg)
         stats = indexer.index_pdf(
@@ -93,17 +99,8 @@ def cmd_query(args):
     from oracle_pageindex.query import QueryEngine
 
     cfg = get_config(args)
-    llm = OllamaClient(
-        base_url=cfg.ollama_base_url,
-        model=cfg.ollama_model,
-        temperature=cfg.ollama_temperature,
-        num_ctx=getattr(cfg, 'ollama_num_ctx', 16384),
-    )
-    db = OracleDB(
-        user=cfg.oracle_user,
-        password=cfg.oracle_password,
-        dsn=cfg.oracle_dsn,
-    )
+    llm = _make_llm(cfg)
+    db = _make_db(cfg)
     try:
         graph = GraphStore(db)
         engine = QueryEngine(llm=llm, graph=graph)
@@ -143,17 +140,8 @@ def cmd_enrich(args):
     from oracle_pageindex.enricher import GraphEnricher
 
     cfg = get_config(args)
-    llm = OllamaClient(
-        base_url=cfg.ollama_base_url,
-        model=cfg.ollama_model,
-        temperature=cfg.ollama_temperature,
-        num_ctx=getattr(cfg, 'ollama_num_ctx', 16384),
-    )
-    db = OracleDB(
-        user=cfg.oracle_user,
-        password=cfg.oracle_password,
-        dsn=cfg.oracle_dsn,
-    )
+    llm = _make_llm(cfg)
+    db = _make_db(cfg)
     try:
         graph = GraphStore(db)
         enricher = GraphEnricher(llm=llm, graph_store=graph)

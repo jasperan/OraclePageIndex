@@ -142,7 +142,7 @@ def run_query_pipeline():
     }
     with open("scripts/e2e_query_results.json", "w") as f:
         json.dump(report, f, indent=2)
-    print(f"Results written to scripts/e2e_query_results.json")
+    print("Results written to scripts/e2e_query_results.json")
 
     db.close()
 
