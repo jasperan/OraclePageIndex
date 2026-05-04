@@ -168,7 +168,7 @@ def cmd_serve(args):
     """Start the FastAPI visualization server."""
     import uvicorn
 
-    host = getattr(args, "host", "0.0.0.0")
+    host = getattr(args, "host", "127.0.0.1")
     port = getattr(args, "port", 8000)
     print(f"Starting server on {host}:{port} ...")
     uvicorn.run("api.server:app", host=host, port=port, reload=True)
@@ -245,7 +245,7 @@ def build_parser():
 
     # --- serve ---
     p_serve = sub.add_parser("serve", help="Start the FastAPI visualization server.")
-    p_serve.add_argument("--host", type=str, default="0.0.0.0", help="Bind host.")
+    p_serve.add_argument("--host", type=str, default="127.0.0.1", help="Bind host.")
     p_serve.add_argument("--port", type=int, default=8000, help="Bind port.")
 
     return parser

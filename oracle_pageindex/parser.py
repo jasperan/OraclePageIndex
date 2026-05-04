@@ -55,6 +55,9 @@ class DocumentParser:
         pdf_parser: str = "PyMuPDF",
         add_node_id: bool = True,
         add_summaries: bool = True,
+        summary_batch_size: int = 1,
+        summary_batch_max_tokens: int = 2_000,
+        summary_workers: int = 4,
     ):
         self.llm = llm
         self.toc_check_page_num = toc_check_page_num
@@ -62,6 +65,9 @@ class DocumentParser:
         self.pdf_parser = pdf_parser
         self.add_node_id = add_node_id
         self.add_summaries = add_summaries
+        self.summary_batch_size = max(1, int(summary_batch_size or 1))
+        self.summary_batch_max_tokens = max(200, int(summary_batch_max_tokens or 2_000))
+        self.summary_workers = max(1, int(summary_workers or 1))
 
     # ------------------------------------------------------------------
     # Public API
@@ -179,7 +185,6 @@ class DocumentParser:
             f"Document text:\n{labelled_text}"
         )
 
-        from .llm import OllamaError
         try:
             response = self.llm.chat(prompt)
         except OllamaError:
@@ -302,36 +307,62 @@ class DocumentParser:
 
         logger.info(f"Generating summaries for {len(nodes_with_text)} nodes")
 
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        batches = [
+            nodes_with_text[i:i + self.summary_batch_size]
+            for i in range(0, len(nodes_with_text), self.summary_batch_size)
+        ]
+        if self.summary_batch_size > 1:
+            logger.info(
+                "Generating summaries in %d batch(es) of up to %d nodes",
+                len(batches),
+                self.summary_batch_size,
+            )
+
+        with ThreadPoolExecutor(max_workers=self.summary_workers) as pool:
             futures = {
-                pool.submit(self._summarize_node, node): node
-                for node in nodes_with_text
+                pool.submit(self._summarize_nodes, batch): batch
+                for batch in batches
             }
             for future in as_completed(futures):
-                node = futures[future]
+                batch = futures[future]
                 try:
-                    summary = future.result()
-                    node["summary"] = summary
+                    summaries = future.result()
+                    for node, summary in zip(batch, summaries, strict=False):
+                        node["summary"] = summary
                 except Exception:
-                    logger.exception(
-                        f"Failed to summarize node '{node.get('title', '?')}'"
-                    )
-                    node["summary"] = ""
+                    titles = [node.get("title", "?") for node in batch]
+                    logger.exception("Failed to summarize batch %s", titles)
+                    for node in batch:
+                        node["summary"] = ""
+
+    def _summarize_nodes(self, nodes: list[dict]) -> list[str]:
+        """Summarize one or more nodes while preserving node order."""
+        if len(nodes) == 1:
+            return [self._summarize_node(nodes[0])]
+
+        try:
+            return self._summarize_node_batch(nodes)
+        except Exception:
+            logger.exception("Batch summary failed; falling back to per-node summaries")
+            return [self._summarize_node(node) for node in nodes]
+
+    def _truncate_for_prompt(self, text: str, max_tokens: int = 10_000) -> str:
+        """Token-aware truncation for LLM prompts."""
+        token_count = count_tokens(text)
+        if token_count <= max_tokens:
+            return text
+
+        text = text[:max_tokens * 4]
+        while count_tokens(text) > max_tokens:
+            text = text[:int(len(text) * 0.9)]
+        return text + "\n[...truncated...]"
 
     def _summarize_node(self, node) -> str:
         """Generate a concise summary for a single tree node via the LLM."""
         text = node.get("text", "")
         title = node.get("title", "Untitled")
 
-        # Truncate very long text to stay within context limits (token-aware)
-        max_tokens = 10_000
-        token_count = count_tokens(text)
-        if token_count > max_tokens:
-            # Rough truncation: 1 token ~ 4 chars, then verify
-            text = text[:max_tokens * 4]
-            while count_tokens(text) > max_tokens:
-                text = text[:int(len(text) * 0.9)]
-            text = text + "\n[...truncated...]"
+        text = self._truncate_for_prompt(text)
 
         prompt = (
             "You are given a section of a document. Generate a concise description "
@@ -341,8 +372,53 @@ class DocumentParser:
             "Directly return the description, do not include any other text."
         )
 
-        from .llm import OllamaError
         try:
             return self.llm.chat(prompt)
         except OllamaError:
             return ""
+
+    def _summarize_node_batch(self, nodes: list[dict]) -> list[str]:
+        """Generate summaries for a batch of nodes in a single LLM call."""
+        items = []
+        for idx, node in enumerate(nodes):
+            items.append({
+                "index": idx,
+                "title": node.get("title", "Untitled"),
+                "text": self._truncate_for_prompt(
+                    node.get("text", ""),
+                    max_tokens=self.summary_batch_max_tokens,
+                ),
+            })
+
+        prompt = (
+            "You are given multiple document sections. Generate a concise description "
+            "of the main points covered in each section.\n\n"
+            "Return ONLY valid JSON as an array of objects. Each object must have:\n"
+            '  - "index": the input section index\n'
+            '  - "summary": the concise section description\n\n'
+            f"Sections:\n{json.dumps(items)}"
+        )
+
+        try:
+            response = self.llm.chat(prompt)
+        except OllamaError:
+            return [""] * len(nodes)
+
+        parsed = self.llm.extract_json(response)
+        if not parsed:
+            parsed = extract_json(response)
+
+        if not isinstance(parsed, list):
+            raise ValueError("Batch summary response was not a JSON list")
+
+        summaries = [""] * len(nodes)
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            try:
+                idx = int(item.get("index"))
+            except (TypeError, ValueError):
+                continue
+            if 0 <= idx < len(summaries):
+                summaries[idx] = str(item.get("summary", "")).strip()
+        return summaries

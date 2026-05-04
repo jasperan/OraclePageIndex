@@ -43,9 +43,16 @@ class Indexer:
             pdf_parser=getattr(opt, "pdf_parser", "PyMuPDF"),
             add_node_id=getattr(opt, "if_add_node_id", "yes") == "yes",
             add_summaries=getattr(opt, "if_add_node_summary", "yes") == "yes",
+            summary_batch_size=getattr(opt, "summary_batch_size", 1),
+            summary_batch_max_tokens=getattr(opt, "summary_batch_max_tokens", 2_000),
+            summary_workers=getattr(opt, "summary_workers", 4),
         )
         self.extract_entities = getattr(opt, "if_extract_entities", "yes") == "yes"
-        self.extractor = EntityExtractor(llm=llm)
+        self.extractor = EntityExtractor(
+            llm=llm,
+            batch_size=getattr(opt, "entity_extraction_batch_size", 1),
+            max_chars=getattr(opt, "entity_extraction_max_chars", 4000),
+        )
         self.graph = GraphStore(db=db)
 
         # Entity resolution (optional, based on config)
@@ -180,7 +187,8 @@ class Indexer:
 
                 name_to_id = {}
                 for ent in unique_entities:
-                    name_to_id[ent["name"]] = ent["entity_id"]
+                    for key in _entity_name_keys(ent["name"]):
+                        name_to_id.setdefault(key, ent["entity_id"])
 
                 stored_rels = 0
                 for rel in relationships:
@@ -188,8 +196,8 @@ class Indexer:
                     target_name = rel.get("target", "").strip()
                     relationship = rel.get("relationship", "RELATED_TO").strip()
 
-                    source_id = name_to_id.get(source_name)
-                    target_id = name_to_id.get(target_name)
+                    source_id = _lookup_entity_id(name_to_id, source_name)
+                    target_id = _lookup_entity_id(name_to_id, target_name)
 
                     if source_id is not None and target_id is not None:
                         self.graph.insert_entity_relationship(
@@ -381,3 +389,26 @@ def _get_or_create_event_loop():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         return loop
+
+
+def _entity_name_keys(name: str) -> set[str]:
+    """Return normalized lookup keys for an extracted entity name."""
+    raw = str(name or "").strip()
+    keys = {raw, raw.lower()}
+
+    # Relationship extraction sometimes echoes list items like
+    # "Disney (ORGANIZATION)" even though the stored entity name is "Disney".
+    if raw.endswith(")") and "(" in raw:
+        without_type = raw.rsplit("(", 1)[0].strip()
+        keys.update({without_type, without_type.lower()})
+
+    return {key for key in keys if key}
+
+
+def _lookup_entity_id(name_to_id: dict[str, int], name: str) -> int | None:
+    """Resolve an LLM relationship endpoint to a stored entity id."""
+    for key in _entity_name_keys(name):
+        entity_id = name_to_id.get(key)
+        if entity_id is not None:
+            return entity_id
+    return None

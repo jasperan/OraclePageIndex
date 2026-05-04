@@ -4,7 +4,7 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, AsyncMock, patch
 
-from oracle_pageindex.indexer import Indexer
+from oracle_pageindex.indexer import Indexer, _lookup_entity_id
 
 
 @pytest.fixture
@@ -186,6 +186,58 @@ def test_index_pdf_runs_entity_resolution(MockResolver, MockExtractor, mock_llm,
     mock_resolver_inst.resolve_all_new_entities.assert_called_once()
     called_ids = mock_resolver_inst.resolve_all_new_entities.call_args[0][0]
     assert len(called_ids) == 2  # two unique entities
+
+
+@patch("oracle_pageindex.indexer.EntityExtractor")
+def test_index_pdf_stores_relationships_with_typed_endpoint_names(
+    MockExtractor, mock_llm, mock_db, opt_with_resolution
+):
+    mock_extractor_inst = MagicMock()
+    mock_extractor_inst.extract_entities_for_sections = AsyncMock(return_value=None)
+    mock_extractor_inst.extract_relationships = AsyncMock(return_value=[
+        {
+            "source": "Acme Corp (ORGANIZATION)",
+            "target": "WidgetX (TECHNOLOGY)",
+            "relationship": "USES",
+        }
+    ])
+    MockExtractor.return_value = mock_extractor_inst
+
+    call_count = [0]
+
+    def mock_returning(*args, **kwargs):
+        call_count[0] += 1
+        return call_count[0]
+
+    mock_db.execute_returning.side_effect = mock_returning
+    idx = Indexer(mock_llm, mock_db, opt_with_resolution)
+    idx.resolver = None
+
+    with patch.object(idx.parser, "build_tree", return_value={
+        "doc_name": "test.pdf",
+        "structure": [{"title": "Sec1", "node_id": "0001", "summary": "s",
+                        "text": "content", "start_index": 1, "end_index": 2}],
+        "page_list": [("page text", 100)],
+    }):
+        async def fake_extract(sections):
+            for sec in sections:
+                sec["_entities"] = [
+                    {"name": "Acme Corp", "type": "ORGANIZATION", "relevance": "DISCUSSES"},
+                    {"name": "WidgetX", "type": "TECHNOLOGY", "relevance": "MENTIONS"},
+                ]
+
+        mock_extractor_inst.extract_entities_for_sections.side_effect = fake_extract
+
+        stats = idx.index_pdf("/path/to/test.pdf")
+
+    assert stats["relationships"] == 1
+    mock_db.execute.assert_called()
+
+
+def test_lookup_entity_id_strips_type_suffix():
+    name_to_id = {"Acme Corp": 42, "acme corp": 42}
+
+    assert _lookup_entity_id(name_to_id, "Acme Corp (ORGANIZATION)") == 42
 
 
 @patch("oracle_pageindex.indexer.EntityExtractor")

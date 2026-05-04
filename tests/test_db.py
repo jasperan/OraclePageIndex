@@ -26,3 +26,20 @@ def test_db_close(mock_pool):
     db.connect()
     db.close()
     assert db._pool is None
+
+
+def test_coerce_value_reads_lob_like_values():
+    lob = MagicMock()
+    lob.read.return_value = "large text"
+
+    assert OracleDB._coerce_value(lob) == "large text"
+    lob.read.assert_called_once()
+
+
+def test_row_to_dict_coerces_values():
+    lob = MagicMock()
+    lob.read.return_value = "summary"
+
+    row = OracleDB._row_to_dict(["id", "body"], (1, lob))
+
+    assert row == {"id": 1, "body": "summary"}

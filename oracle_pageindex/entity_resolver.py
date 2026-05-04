@@ -3,6 +3,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_EMBEDDING_MODEL = "all-minilm"
+
 
 class EntityResolver:
     """Resolves duplicate entities using embedding similarity + LLM confirmation.
@@ -23,7 +25,9 @@ class EntityResolver:
         self.graph = graph_store
         self.enabled = config.get("enabled", False) if config else False
         self.embedding_model = (
-            config.get("embedding_model", "nomic-embed-text") if config else "nomic-embed-text"
+            config.get("embedding_model", DEFAULT_EMBEDDING_MODEL)
+            if config
+            else DEFAULT_EMBEDDING_MODEL
         )
         self.similarity_threshold = config.get("similarity_threshold", 0.3) if config else 0.3
         self.auto_confirm_threshold = (
@@ -39,6 +43,7 @@ class EntityResolver:
         if not embedding:
             return []
 
+        self.graph.update_entity_embedding(entity_id, embedding)
         return self.graph.find_similar_entities(
             embedding, entity_type, self.similarity_threshold, exclude_id=entity_id
         )

@@ -55,6 +55,20 @@ class ConfigLoader:
                 items[new_key] = v
         return items
 
+    @staticmethod
+    def _deep_merge(defaults: dict, overrides: dict) -> dict:
+        """Recursively merge user overrides into defaults."""
+        merged = copy.deepcopy(defaults)
+        for key, value in overrides.items():
+            if (
+                isinstance(value, dict)
+                and isinstance(merged.get(key), dict)
+            ):
+                merged[key] = ConfigLoader._deep_merge(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
     def _validate_keys(self, user_dict: dict):
         # Allow any key that already exists at the top level or as a
         # flattened variant so users can override ``ollama_model`` directly.
@@ -83,8 +97,8 @@ class ConfigLoader:
 
         self._validate_keys(user_dict)
 
-        # Deep‑merge: user values override defaults
-        merged = {**self._default_dict, **user_dict}
+        # Deep-merge: user values override defaults without deleting sibling keys.
+        merged = self._deep_merge(self._default_dict, user_dict)
 
         # Apply environment variable overrides for Oracle credentials
         oracle = merged.get("oracle", {})

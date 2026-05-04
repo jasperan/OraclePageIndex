@@ -145,6 +145,10 @@ class QueryEngine:
             logger.info("No entity matches found, falling back to title substring search")
             sections_by_id = self._fallback_title_search(entity_names)
 
+        if sections_by_id:
+            sections_by_id = self._hydrate_sections(sections_by_id)
+        all_related = self._dedupe_related_entities(all_related)
+
         # Step 6: If still nothing, return early
         if not sections_by_id:
             no_info_answer = (
@@ -530,6 +534,45 @@ class QueryEngine:
 
         logger.info(f"Fallback title search found {len(sections_by_id)} section(s)")
         return sections_by_id
+
+    def _hydrate_sections(self, sections_by_id: dict[int, dict]) -> dict[int, dict]:
+        """Merge traversal hits with full section text and document metadata."""
+        section_ids = list(sections_by_id)
+        if not section_ids:
+            return sections_by_id
+
+        try:
+            full_sections = self.graph.get_sections_by_ids(section_ids)
+        except Exception:
+            logger.debug("Failed to hydrate section context", exc_info=True)
+            return sections_by_id
+
+        hydrated = {}
+        for sid, section in sections_by_id.items():
+            merged = dict(full_sections.get(sid, {}))
+            for key, value in section.items():
+                if value not in (None, ""):
+                    merged[key] = value
+            hydrated[sid] = merged
+        return hydrated
+
+    def _dedupe_related_entities(self, related_entities: list[dict]) -> list[dict]:
+        """Remove duplicate related entities while preserving first-seen order."""
+        seen = set()
+        deduped = []
+        for ent in related_entities:
+            key = ent.get("entity_id")
+            if key is None:
+                key = (
+                    ent.get("name") or ent.get("related_name", ""),
+                    ent.get("entity_type") or ent.get("related_type", ""),
+                    ent.get("relationship", "RELATED_TO"),
+                )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(ent)
+        return deduped
 
     def _build_context(self, sections: list, related_entities: list) -> str:
         """Build a markdown-formatted context string, respecting the token budget.

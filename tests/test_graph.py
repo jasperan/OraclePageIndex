@@ -79,6 +79,26 @@ def test_get_document_sections(store, mock_db):
     mock_db.fetchall.assert_called_once()
 
 
+def test_get_sections_by_ids_returns_mapping(store, mock_db):
+    mock_db.fetchall.return_value = [
+        {"section_id": 2, "title": "Body", "doc_name": "report.pdf"},
+        {"section_id": 1, "title": "Intro", "doc_name": "report.pdf"},
+    ]
+
+    sections = store.get_sections_by_ids([2, 1, 2])
+
+    assert sections[1]["title"] == "Intro"
+    assert sections[2]["doc_name"] == "report.pdf"
+    sql, params = mock_db.fetchall.call_args[0]
+    assert "JOIN documents" in sql
+    assert params == {"id_0": 2, "id_1": 1}
+
+
+def test_get_sections_by_ids_empty_skips_query(store, mock_db):
+    assert store.get_sections_by_ids([]) == {}
+    mock_db.fetchall.assert_not_called()
+
+
 def test_get_section_children(store, mock_db):
     mock_db.fetchall.return_value = [
         {"section_id": 3, "title": "Sub-section"},
@@ -102,6 +122,9 @@ def test_get_all_entities(store, mock_db):
     ]
     entities = store.get_all_entities()
     assert len(entities) == 1
+    call_sql = mock_db.fetchall.call_args[0][0]
+    assert "name_embedding" not in call_sql
+    assert "canonical_id" in call_sql
 
 
 def test_get_entity_sections(store, mock_db):

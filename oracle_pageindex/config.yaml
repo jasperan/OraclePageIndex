@@ -15,18 +15,23 @@ oracle:
   pool_max: 5
 
 # PageIndex configuration (kept from original)
-toc_check_page_num: 5
+toc_check_page_num: 10
 max_token_num_each_node: 20000
 if_add_node_id: "yes"
 if_add_node_summary: "yes"
 if_add_doc_description: "no"
 if_add_node_text: "no"
 if_extract_entities: "yes"
+summary_batch_size: 5
+summary_batch_max_tokens: 800
+summary_workers: 2
+entity_extraction_batch_size: 5
+entity_extraction_max_chars: 1200
 
 # Entity resolution configuration
 # Uses Oracle VECTOR_DISTANCE on name embeddings to find duplicate entities
 entity_resolution:
   enabled: true
-  embedding_model: "nomic-embed-text"
+  embedding_model: "all-minilm"
   similarity_threshold: 0.3
   auto_confirm_threshold: 0.15

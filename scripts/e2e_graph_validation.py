@@ -50,6 +50,8 @@ class E2EValidator:
             model=cfg.ollama_model,
             temperature=cfg.ollama_temperature,
         )
+        er_config = getattr(cfg, "entity_resolution", {}) or {}
+        self.embedding_model = er_config.get("embedding_model", "all-minilm")
         self.results = []
         self.passed = 0
         self.failed = 0
@@ -122,7 +124,7 @@ class E2EValidator:
 
         # Check edge tables
         for tbl in ["section_hierarchy", "section_entities", "entity_relationships"]:
-            cnt = self.db.fetchone(f"SELECT COUNT(*) AS c FROM {tbl}")
+            cnt = self.db.fetchone(f"SELECT COUNT(*) AS c FROM {tbl}")  # nosec B608
             print(f"  {tbl}: {cnt['c']} rows")
 
         return len(docs) > 0 and len(sections) > 0
@@ -307,7 +309,7 @@ class E2EValidator:
 
         # Generate an embedding for the first entity
         try:
-            embedding = self.llm.embed(self.entity_names[0])
+            embedding = self.llm.embed(self.entity_names[0], model=self.embedding_model)
             print(f"  Got embedding for '{self.entity_names[0]}': dim={len(embedding)}")
         except Exception as e:
             print(f"  SKIP embedding: {e}")

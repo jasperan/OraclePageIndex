@@ -174,6 +174,24 @@ class GraphStore:
             {"doc_id": doc_id},
         )
 
+    def get_sections_by_ids(self, section_ids):
+        """Return full section context keyed by section_id."""
+        ids = list(dict.fromkeys(int(sid) for sid in section_ids if sid is not None))
+        if not ids:
+            return {}
+
+        binds = {f"id_{i}": sid for i, sid in enumerate(ids)}
+        placeholders = ", ".join(f":id_{i}" for i in range(len(ids)))
+        sql = "\n".join([
+            "SELECT s.section_id, s.title, s.summary, s.text_content,",
+            "       s.depth_level, s.start_index, s.end_index,",
+            "       d.doc_id, d.doc_name",
+            "FROM sections s",
+            "JOIN documents d ON d.doc_id = s.doc_id",
+            "WHERE s.section_id IN (" + placeholders + ")",
+        ])
+        return {row["section_id"]: row for row in self.db.fetchall(sql, binds)}
+
     def get_section_children(self, section_id):
         """Return child sections via the section_hierarchy edge table."""
         sql = """
@@ -198,7 +216,13 @@ class GraphStore:
 
     def get_all_entities(self):
         """Return all entities as a list of dicts."""
-        return self.db.fetchall("SELECT * FROM entities ORDER BY entity_id")
+        sql = """
+            SELECT entity_id, name, entity_type, description,
+                   canonical_id, first_seen_doc, last_seen_doc
+            FROM entities
+            ORDER BY entity_id
+        """
+        return self.db.fetchall(sql)
 
     # ------------------------------------------------------------------
     # Entity resolution methods
@@ -376,7 +400,7 @@ class GraphStore:
         """
         data = self.get_full_graph_data()
         try:
-            changes = self.get_temporal_changes(doc_group, None, version)
+            changes = self.get_temporal_changes(doc_group, version - 1, version)
             change_map = {}
             for c in changes:
                 entity_name = c.get("name") or c.get("entity_name")
@@ -386,7 +410,7 @@ class GraphStore:
                 if node.get("type") == "entity" and node.get("label") in change_map:
                     node["temporal_status"] = change_map[node["label"]]
         except Exception:
-            pass  # temporal data may not exist yet
+            logger.debug("Temporal overlay unavailable", exc_info=True)
         return data
 
     # ------------------------------------------------------------------
@@ -873,8 +897,13 @@ class GraphStore:
             {"tid": turn_id},
         )
 
+        primary_entities = [
+            entity for entity in entities
+            if entity.get("role") == "PRIMARY"
+        ]
+
         return {
-            "primary_entities": entities,
+            "primary_entities": primary_entities,
             "previous_sections": [s["section_id"] for s in sections],
         }
 

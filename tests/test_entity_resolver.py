@@ -1,6 +1,6 @@
 """Tests for vector-assisted entity resolution."""
 from unittest.mock import MagicMock
-from oracle_pageindex.entity_resolver import EntityResolver
+from oracle_pageindex.entity_resolver import DEFAULT_EMBEDDING_MODEL, EntityResolver
 
 
 def _make_resolver(enabled=True):
@@ -8,7 +8,7 @@ def _make_resolver(enabled=True):
     mock_graph = MagicMock()
     config = {
         "enabled": enabled,
-        "embedding_model": "nomic-embed-text",
+        "embedding_model": DEFAULT_EMBEDDING_MODEL,
         "similarity_threshold": 0.3,
         "auto_confirm_threshold": 0.15,
     }
@@ -26,14 +26,20 @@ def test_find_candidates():
     )
     assert len(candidates) == 1
     assert candidates[0]["distance"] == 0.1
-    llm.embed.assert_called_once_with("Apple Inc.", model="nomic-embed-text")
+    llm.embed.assert_called_once_with("Apple Inc.", model=DEFAULT_EMBEDDING_MODEL)
+    graph.update_entity_embedding.assert_called_once_with(1, [0.1, 0.2, 0.3])
+    graph.find_similar_entities.assert_called_once_with(
+        [0.1, 0.2, 0.3], "ORGANIZATION", 0.3, exclude_id=1
+    )
 
 
 def test_find_candidates_disabled():
-    resolver, llm, _ = _make_resolver(enabled=False)
+    resolver, llm, graph = _make_resolver(enabled=False)
     candidates = resolver.find_candidates(entity_id=1, name="X", entity_type="Y")
     assert candidates == []
     llm.embed.assert_not_called()
+    graph.update_entity_embedding.assert_not_called()
+    graph.find_similar_entities.assert_not_called()
 
 
 def test_find_candidates_no_embedding():
@@ -41,6 +47,7 @@ def test_find_candidates_no_embedding():
     llm.embed.return_value = []
     candidates = resolver.find_candidates(entity_id=1, name="X", entity_type="Y")
     assert candidates == []
+    graph.update_entity_embedding.assert_not_called()
     graph.find_similar_entities.assert_not_called()
 
 
@@ -195,6 +202,16 @@ def test_resolve_all_missing_entity():
 def test_init_with_none_config():
     resolver = EntityResolver(MagicMock(), MagicMock(), None)
     assert resolver.enabled is False
-    assert resolver.embedding_model == "nomic-embed-text"
+    assert resolver.embedding_model == DEFAULT_EMBEDDING_MODEL
     assert resolver.similarity_threshold == 0.3
     assert resolver.auto_confirm_threshold == 0.15
+
+
+def test_init_with_enabled_config_without_embedding_model_uses_schema_sized_default():
+    resolver = EntityResolver(
+        MagicMock(),
+        MagicMock(),
+        {"enabled": True, "similarity_threshold": 0.2, "auto_confirm_threshold": 0.1},
+    )
+    assert resolver.enabled is True
+    assert resolver.embedding_model == DEFAULT_EMBEDDING_MODEL

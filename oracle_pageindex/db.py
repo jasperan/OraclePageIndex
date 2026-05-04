@@ -93,12 +93,27 @@ class OracleDB:
                 conn.commit()
                 return int(out_var.getvalue()[0])
 
+    @staticmethod
+    def _coerce_value(value):
+        """Convert driver-owned values such as LOBs while the cursor is open."""
+        read = getattr(value, "read", None)
+        if callable(read):
+            return read()
+        return value
+
+    @classmethod
+    def _row_to_dict(cls, columns, row):
+        return {
+            col: cls._coerce_value(value)
+            for col, value in zip(columns, row)
+        }
+
     def fetchall(self, sql, params=None):
         with self.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, params or {})
                 columns = [col[0].lower() for col in cur.description]
-                return [dict(zip(columns, row)) for row in cur.fetchall()]
+                return [self._row_to_dict(columns, row) for row in cur.fetchall()]
 
     def fetchone(self, sql, params=None):
         with self.get_connection() as conn:
@@ -107,5 +122,5 @@ class OracleDB:
                 row = cur.fetchone()
                 if row:
                     columns = [col[0].lower() for col in cur.description]
-                    return dict(zip(columns, row))
+                    return self._row_to_dict(columns, row)
                 return None

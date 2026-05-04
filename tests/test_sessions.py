@@ -51,7 +51,10 @@ def test_get_session_context():
         {"turn_id": 7},      # turn_id for that turn
     ]
     db.fetchall.side_effect = [
-        [{"entity_id": 1, "name": "Apple Inc.", "entity_type": "ORG", "role": "PRIMARY"}],
+        [
+            {"entity_id": 1, "name": "Apple Inc.", "entity_type": "ORG", "role": "PRIMARY"},
+            {"entity_id": 2, "name": "Revenue", "entity_type": "METRIC", "role": "REFERENCED"},
+        ],
         [{"section_id": 9, "rank_score": 0.9}, {"section_id": 11, "rank_score": 0.8}],
     ]
     ctx = gs.get_session_context(session_id=1)

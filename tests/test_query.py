@@ -43,6 +43,7 @@ def mock_graph():
     graph.get_related_entities.return_value = []
     graph.get_all_documents.return_value = []
     graph.get_document_sections.return_value = []
+    graph.get_sections_by_ids.return_value = {}
 
     # Multi-hop traversal defaults
     graph.traverse_entity_neighborhood.return_value = {
@@ -154,6 +155,24 @@ def test_query_returns_query_result_dataclass(engine, mock_llm, mock_graph):
     assert isinstance(result.traversal_path, list)
 
 
+def test_query_dedupes_related_entities(engine, mock_llm, mock_graph):
+    mock_graph.traverse_entity_neighborhood.return_value = {
+        "sections": [
+            {"section_id": 1, "title": "Revenue Overview", "text_content": "Apple revenue..."},
+        ],
+        "entities": [
+            {"entity_id": 2, "name": "Revenue", "entity_type": "METRIC"},
+            {"entity_id": 2, "name": "Revenue", "entity_type": "METRIC"},
+        ],
+        "graph_query": _make_graph_query(),
+    }
+
+    result = engine.query("What is Apple?")
+
+    assert len(result.related_entities) == 1
+    assert result.related_entities[0]["name"] == "Revenue"
+
+
 # ------------------------------------------------------------------
 # Test 6: graph_queries is populated
 # ------------------------------------------------------------------
@@ -229,6 +248,33 @@ def test_query_fallback_title_search_when_traversal_empty(engine, mock_llm, mock
     result = engine.query("What is Apple?")
     assert len(result.sources) > 0
     mock_graph.get_all_documents.assert_called()
+
+
+def test_query_hydrates_traversal_sections_before_reasoning(engine, mock_llm, mock_graph):
+    """Traversal hits should be enriched with text/doc metadata before LLM reasoning."""
+    mock_graph.traverse_entity_neighborhood.return_value = {
+        "sections": [
+            {"section_id": 1, "title": "Revenue Overview", "depth_level": 0},
+        ],
+        "entities": [],
+        "graph_query": _make_graph_query(),
+    }
+    mock_graph.get_sections_by_ids.return_value = {
+        1: {
+            "section_id": 1,
+            "title": "Revenue Overview",
+            "text_content": "Revenue was $100B.",
+            "doc_name": "annual.pdf",
+            "depth_level": 0,
+        }
+    }
+
+    result = engine.query("What is Apple revenue?")
+
+    prompt = mock_llm.chat.call_args[0][0]
+    assert "Revenue was $100B." in prompt
+    assert "annual.pdf" in prompt
+    assert result.sources == [{"title": "Revenue Overview", "doc_name": "annual.pdf"}]
 
 
 # ------------------------------------------------------------------
