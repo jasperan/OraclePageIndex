@@ -473,22 +473,18 @@ class QueryEngine:
         if turn_id is None:
             return
         seen: set[int] = set()
-        for ent in primary:
-            eid = ent.get("entity_id")
-            if eid and eid not in seen:
-                seen.add(eid)
-                try:
-                    self.graph.insert_turn_entity(turn_id, eid, "PRIMARY")
-                except Exception:
-                    logger.debug("Failed to record PRIMARY turn entity %s", eid, exc_info=True)
-        for ent in related:
-            eid = ent.get("entity_id")
-            if eid and eid not in seen:
-                seen.add(eid)
-                try:
-                    self.graph.insert_turn_entity(turn_id, eid, "REFERENCED")
-                except Exception:
-                    logger.debug("Failed to record REFERENCED turn entity %s", eid, exc_info=True)
+        for role, entities in (("PRIMARY", primary), ("REFERENCED", related)):
+            for ent in entities:
+                eid = ent.get("entity_id")
+                if eid and eid not in seen:
+                    seen.add(eid)
+                    self._insert_turn_entity(turn_id, eid, role)
+
+    def _insert_turn_entity(self, turn_id: int, entity_id: int, role: str) -> None:
+        try:
+            self.graph.insert_turn_entity(turn_id, entity_id, role)
+        except Exception:
+            logger.debug("Failed to record %s turn entity %s", role, entity_id, exc_info=True)
 
     def _record_turn_sections(self, turn_id: int | None, sections: list[dict]) -> None:
         """Record which sections a turn used for context. Failures are silently ignored."""

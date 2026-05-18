@@ -44,6 +44,21 @@ llm: OllamaClient | None = None
 query_engine: QueryEngine | None = None
 
 
+def _empty_graph_data():
+    return {"nodes": [], "edges": []}
+
+
+def _read_graph(operation, empty_factory, error_message, *error_args):
+    """Run a graph read, preserving the API's documented empty-data fail-safe."""
+    if graph is None:
+        return empty_factory()
+    try:
+        return operation(graph)
+    except Exception:
+        logger.exception(error_message, *error_args)
+        return empty_factory()
+
+
 def _init_backend():
     """Attempt to create DB, GraphStore, OllamaClient and QueryEngine.
 
@@ -178,75 +193,65 @@ async def api_graph(
     annotated with a ``temporal_status`` field (APPEARED, DISAPPEARED,
     MODIFIED, STABLE) reflecting changes at that version.
     """
-    if graph is None:
-        return {"nodes": [], "edges": []}
-    try:
+    def read_graph(store):
         if doc_group and version is not None:
-            return graph.get_versioned_graph_data(doc_group, version)
-        return graph.get_full_graph_data()
-    except Exception:
-        logger.exception("Error fetching full graph data")
-        return {"nodes": [], "edges": []}
+            return store.get_versioned_graph_data(doc_group, version)
+        return store.get_full_graph_data()
+
+    return _read_graph(read_graph, _empty_graph_data, "Error fetching full graph data")
 
 
 @app.get("/api/documents")
 async def api_documents():
     """Return all indexed documents."""
-    if graph is None:
-        return []
-    try:
-        return graph.get_all_documents()
-    except Exception:
-        logger.exception("Error fetching documents")
-        return []
+    return _read_graph(
+        lambda store: store.get_all_documents(),
+        list,
+        "Error fetching documents",
+    )
 
 
 @app.get("/api/documents/{doc_id}/sections")
 async def api_document_sections(doc_id: int):
     """Return all sections belonging to a document."""
-    if graph is None:
-        return []
-    try:
-        return graph.get_document_sections(doc_id)
-    except Exception:
-        logger.exception("Error fetching sections for doc_id=%s", doc_id)
-        return []
+    return _read_graph(
+        lambda store: store.get_document_sections(doc_id),
+        list,
+        "Error fetching sections for doc_id=%s",
+        doc_id,
+    )
 
 
 @app.get("/api/entities")
 async def api_entities():
     """Return all extracted entities."""
-    if graph is None:
-        return []
-    try:
-        return graph.get_all_entities()
-    except Exception:
-        logger.exception("Error fetching entities")
-        return []
+    return _read_graph(
+        lambda store: store.get_all_entities(),
+        list,
+        "Error fetching entities",
+    )
 
 
 @app.get("/api/entities/{entity_name}/sections")
 async def api_entity_sections(entity_name: str):
     """Return sections that mention the given entity."""
-    if graph is None:
-        return []
-    try:
-        return graph.get_entity_sections(entity_name)
-    except Exception:
-        logger.exception("Error fetching sections for entity=%s", entity_name)
-        return []
+    return _read_graph(
+        lambda store: store.get_entity_sections(entity_name),
+        list,
+        "Error fetching sections for entity=%s",
+        entity_name,
+    )
 
 
 @app.get("/api/entities/{entity_name}/related")
 async def api_related_entities(entity_name: str):
     """Return entities related to the given entity."""
-    if graph is None:
-        return []
-    try:
-        return graph.get_related_entities(entity_name)
-    except Exception:
-        logger.exception("Error fetching related entities for=%s", entity_name)
-        return []
+    return _read_graph(
+        lambda store: store.get_related_entities(entity_name),
+        list,
+        "Error fetching related entities for=%s",
+        entity_name,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -287,25 +292,22 @@ async def api_query(
 @app.get("/api/sessions")
 async def api_sessions():
     """List all conversation sessions."""
-    if graph is None:
-        return []
-    try:
-        return graph.list_sessions()
-    except Exception:
-        logger.exception("Error fetching sessions")
-        return []
+    return _read_graph(
+        lambda store: store.list_sessions(),
+        list,
+        "Error fetching sessions",
+    )
 
 
 @app.get("/api/sessions/{session_id}/turns")
 async def api_session_turns(session_id: int):
     """Return all turns in a conversation session."""
-    if graph is None:
-        return []
-    try:
-        return graph.get_session_turns(session_id)
-    except Exception:
-        logger.exception("Error fetching turns for session_id=%s", session_id)
-        return []
+    return _read_graph(
+        lambda store: store.get_session_turns(session_id),
+        list,
+        "Error fetching turns for session_id=%s",
+        session_id,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -340,7 +340,7 @@
 
         // Connections list
         const connList = document.getElementById("detail-connections");
-        connList.innerHTML = "";
+        connList.replaceChildren();
         if (connections.length === 0) {
             document.getElementById("detail-connections-section").style.display = "none";
         } else {
@@ -791,34 +791,90 @@
         var sqlDiv = document.getElementById("query-sql-list");
 
         // Render steps
-        stepsDiv.innerHTML = traversalPath.map(function (step) {
+        stepsDiv.replaceChildren(...traversalPath.map(function (step) {
             var borderColor = step.node_type === "entity" ? "#d29922" :
                               step.node_type === "section" ? "#3fb950" : "#58a6ff";
-            var edgeInfo = step.edge_label
-                ? '<span style="color:#8b949e; font-size:11px;"> ' +
-                  (step.edge_direction === "reverse" ? "\u2190" : "\u2192") +
-                  " " + step.edge_label + "</span>"
-                : "";
-            return '<div style="padding:6px 8px; margin:4px 0; background:#0d1117; border-radius:6px; border-left:3px solid ' + borderColor + ';">' +
-                '<span style="color:#8b949e; font-size:11px;">' + step.step_number + ".</span> " +
-                '<span style="color:#e6edf3; font-size:12px;">[' + step.node_type + "] " + step.node_label + "</span>" +
-                edgeInfo +
-                '<div style="color:#8b949e; font-size:11px; margin-top:2px;">' + (step.reason || "") + "</div>" +
-                "</div>";
-        }).join("");
+            var row = document.createElement("div");
+            row.style.padding = "6px 8px";
+            row.style.margin = "4px 0";
+            row.style.background = "#0d1117";
+            row.style.borderRadius = "6px";
+            row.style.borderLeft = "3px solid " + borderColor;
+
+            var stepNumber = document.createElement("span");
+            stepNumber.style.color = "#8b949e";
+            stepNumber.style.fontSize = "11px";
+            stepNumber.textContent = step.step_number + ".";
+            row.appendChild(stepNumber);
+            row.appendChild(document.createTextNode(" "));
+
+            var label = document.createElement("span");
+            label.style.color = "#e6edf3";
+            label.style.fontSize = "12px";
+            label.textContent = "[" + step.node_type + "] " + step.node_label;
+            row.appendChild(label);
+
+            if (step.edge_label) {
+                var edgeInfo = document.createElement("span");
+                edgeInfo.style.color = "#8b949e";
+                edgeInfo.style.fontSize = "11px";
+                edgeInfo.textContent = " " +
+                    (step.edge_direction === "reverse" ? "\u2190" : "\u2192") +
+                    " " + step.edge_label;
+                row.appendChild(edgeInfo);
+            }
+
+            var reason = document.createElement("div");
+            reason.style.color = "#8b949e";
+            reason.style.fontSize = "11px";
+            reason.style.marginTop = "2px";
+            reason.textContent = step.reason || "";
+            row.appendChild(reason);
+
+            return row;
+        }));
 
         // Render SQL queries
         if (graphQueries && graphQueries.length > 0) {
-            sqlDiv.innerHTML = graphQueries.map(function (gq) {
+            sqlDiv.replaceChildren(...graphQueries.map(function (gq) {
                 var ms = typeof gq.execution_ms === "number" ? gq.execution_ms.toFixed(1) : "?";
-                return '<div style="padding:8px; margin:4px 0; background:#0d1117; border-radius:6px;">' +
-                    '<div style="color:#58a6ff; font-size:12px; margin-bottom:4px;">' + (gq.purpose || "") + "</div>" +
-                    '<pre style="color:#8b949e; font-size:11px; margin:0; white-space:pre-wrap; word-break:break-all;">' + (gq.sql || "") + "</pre>" +
-                    '<div style="color:#3fb950; font-size:11px; margin-top:4px;">' + (gq.rows_returned || 0) + " rows in " + ms + "ms</div>" +
-                    "</div>";
-            }).join("");
+                var item = document.createElement("div");
+                item.style.padding = "8px";
+                item.style.margin = "4px 0";
+                item.style.background = "#0d1117";
+                item.style.borderRadius = "6px";
+
+                var purpose = document.createElement("div");
+                purpose.style.color = "#58a6ff";
+                purpose.style.fontSize = "12px";
+                purpose.style.marginBottom = "4px";
+                purpose.textContent = gq.purpose || "";
+                item.appendChild(purpose);
+
+                var sql = document.createElement("pre");
+                sql.style.color = "#8b949e";
+                sql.style.fontSize = "11px";
+                sql.style.margin = "0";
+                sql.style.whiteSpace = "pre-wrap";
+                sql.style.wordBreak = "break-all";
+                sql.textContent = gq.sql || "";
+                item.appendChild(sql);
+
+                var timing = document.createElement("div");
+                timing.style.color = "#3fb950";
+                timing.style.fontSize = "11px";
+                timing.style.marginTop = "4px";
+                timing.textContent = (gq.rows_returned || 0) + " rows in " + ms + "ms";
+                item.appendChild(timing);
+
+                return item;
+            }));
         } else {
-            sqlDiv.innerHTML = '<div style="color:#8b949e; font-size:12px;">No graph queries recorded</div>';
+            var empty = document.createElement("div");
+            empty.style.color = "#8b949e";
+            empty.style.fontSize = "12px";
+            empty.textContent = "No graph queries recorded";
+            sqlDiv.replaceChildren(empty);
         }
 
         panel.style.display = "block";

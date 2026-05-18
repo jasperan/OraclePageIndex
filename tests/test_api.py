@@ -87,6 +87,15 @@ def test_graph_endpoint_no_backend(client_no_backend):
     assert resp.json() == {"nodes": [], "edges": []}
 
 
+def test_graph_endpoint_backend_error_returns_empty_graph(client, mock_graph):
+    mock_graph.get_full_graph_data.side_effect = RuntimeError("database unavailable")
+
+    resp = client.get("/api/graph")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"nodes": [], "edges": []}
+
+
 # ---------------------------------------------------------------------------
 # /api/documents
 # ---------------------------------------------------------------------------
@@ -101,6 +110,15 @@ def test_documents_endpoint(client, mock_graph):
     mock_graph.get_all_documents.assert_called_once()
 
 
+def test_documents_endpoint_backend_error_returns_empty_list(client, mock_graph):
+    mock_graph.get_all_documents.side_effect = RuntimeError("database unavailable")
+
+    resp = client.get("/api/documents")
+
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
 # ---------------------------------------------------------------------------
 # /api/entities
 # ---------------------------------------------------------------------------
@@ -113,6 +131,15 @@ def test_entities_endpoint(client, mock_graph):
     assert resp.status_code == 200
     assert len(resp.json()) == 1
     mock_graph.get_all_entities.assert_called_once()
+
+
+def test_entities_endpoint_backend_error_returns_empty_list(client, mock_graph):
+    mock_graph.get_all_entities.side_effect = RuntimeError("database unavailable")
+
+    resp = client.get("/api/entities")
+
+    assert resp.status_code == 200
+    assert resp.json() == []
 
 
 # ---------------------------------------------------------------------------

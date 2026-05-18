@@ -457,6 +457,20 @@ def test_query_records_turn_sections(mock_llm, mock_graph):
     assert first_call[1]["rank_score"] == 1.0
 
 
+def test_query_turn_edge_recording_is_best_effort(mock_llm, mock_graph):
+    """Turn metadata write failures should not break the query answer."""
+    mock_graph.create_session.return_value = 1
+    mock_graph.create_turn.return_value = 10
+    mock_graph.insert_turn_entity.side_effect = RuntimeError("metadata write failed")
+    mock_graph.insert_turn_section.side_effect = RuntimeError("metadata write failed")
+    engine = QueryEngine(mock_llm, mock_graph)
+
+    result = engine.query("What is Apple?")
+
+    assert result.answer == "Apple's revenue was $100B."
+    mock_graph.update_turn_answer.assert_called_once_with(10, "Apple's revenue was $100B.")
+
+
 def test_query_updates_turn_answer(mock_llm, mock_graph):
     """Query stores the LLM answer back into the turn record."""
     mock_graph.create_session.return_value = 1

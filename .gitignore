@@ -30,6 +30,7 @@ CLAUDE.md
 docs/plans/
 .mcp*/
 mcp*.json
+.omx/
 .serena/
 .cursor/
 .aider*
