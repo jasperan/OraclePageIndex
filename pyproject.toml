@@ -36,3 +36,5 @@ testpaths = ["tests"]
 markers = [
     "integration: tests that require a live Oracle database",
 ]
+
+[tool.uv]
