@@ -125,6 +125,7 @@ class Indexer:
         # -- Steps 4-6: Entity extraction (optional, can be slow) ----------
         unique_entities = []
         relationships = []
+        stored_rels = 0
 
         if self.extract_entities:
             # -- Step 4: Extract entities for each section -------------------
@@ -190,7 +191,6 @@ class Indexer:
                     for key in _entity_name_keys(ent["name"]):
                         name_to_id.setdefault(key, ent["entity_id"])
 
-                stored_rels = 0
                 for rel in relationships:
                     source_name = rel.get("source", "").strip()
                     target_name = rel.get("target", "").strip()
@@ -212,7 +212,6 @@ class Indexer:
                             f"entity not found in index"
                         )
 
-                relationships = relationships[:stored_rels] if stored_rels else []
                 logger.info(f"Stored {stored_rels} entity relationship(s)")
         else:
             logger.info("Skipping entity extraction (disabled in config)")
@@ -227,7 +226,7 @@ class Indexer:
             "doc_name": doc_name,
             "sections": len(all_sections),
             "entities": len(unique_entities),
-            "relationships": len(relationships),
+            "relationships": stored_rels,
         }
         logger.info(f"Indexing complete: {stats}")
         return stats

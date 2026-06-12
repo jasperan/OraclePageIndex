@@ -56,12 +56,6 @@ async def test_chat_async_raises_ollama_error_on_max_retries(client):
             await client.chat_async("test prompt", max_retries=1)
 
 
-def test_chat_with_finish_info_raises_on_max_retries(client):
-    with patch("httpx.Client.post", side_effect=ConnectionError("refused")):
-        with pytest.raises(OllamaError, match="Max retries"):
-            client.chat_with_finish_info("test prompt", max_retries=1)
-
-
 def test_maybe_no_think_qwen3():
     qwen_client = OllamaClient(model="qwen3:8b")
     result = qwen_client._maybe_no_think("hello")

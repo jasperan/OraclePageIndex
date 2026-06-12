@@ -2,6 +2,7 @@ import httpx
 import json
 import logging
 import asyncio
+import re
 import time
 
 logger = logging.getLogger(__name__)
@@ -95,28 +96,6 @@ class OllamaClient:
 
         raise OllamaError(f"Max retries ({max_retries}) reached for prompt: {prompt[:100]}...")
 
-    def chat_with_finish_info(self, prompt: str, chat_history: list | None = None,
-                              max_retries: int = _DEFAULT_MAX_RETRIES) -> tuple[str, str]:
-        messages = self._build_messages(prompt, chat_history)
-        body = _build_request_body(self.model, messages, self.temperature, self.num_ctx)
-
-        for attempt in range(max_retries):
-            try:
-                with httpx.Client(timeout=_DEFAULT_TIMEOUT) as client:
-                    response = client.post(f"{self.base_url}/api/chat", json=body)
-                    response.raise_for_status()
-                    data = response.json()
-                    content = data["message"]["content"]
-                    done_reason = data.get("done_reason", "stop")
-                    status = "max_output_reached" if done_reason == "length" else "finished"
-                    return content, status
-            except Exception as e:
-                logger.error(f"Ollama API error (attempt {attempt + 1}/{max_retries}): {e}")
-                if attempt < max_retries - 1:
-                    _backoff_sleep(attempt)
-
-        raise OllamaError(f"Max retries ({max_retries}) reached for prompt: {prompt[:100]}...")
-
     INTENT_CLASSIFICATION_PROMPT = """Classify the intent of this question and extract the key entities mentioned.
 
 Intent types:
@@ -199,7 +178,7 @@ Question: """
             else:
                 json_content = content.strip()
 
-            json_content = json_content.replace("None", "null")
+            json_content = re.sub(r"\bNone\b", "null", json_content)
             json_content = json_content.replace(",]", "]").replace(",}", "}")
             return json.loads(json_content)
         except json.JSONDecodeError:

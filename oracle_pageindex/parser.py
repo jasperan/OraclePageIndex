@@ -8,6 +8,7 @@ PDF reading, tree manipulation) lives in utils.py.
 
 import json
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .llm import OllamaClient, OllamaError
@@ -16,7 +17,6 @@ from .utils import (
     add_preface_if_needed,
     convert_physical_index_to_int,
     count_tokens,
-    extract_json,
     get_page_tokens,
     get_pdf_name,
     get_text_of_pdf_pages_with_labels,
@@ -90,7 +90,6 @@ class DocumentParser:
         ValueError
             If the path does not point to a PDF file.
         """
-        import os
         if isinstance(pdf_path, str):
             if not os.path.isfile(pdf_path):
                 raise FileNotFoundError(f"PDF file not found: {pdf_path}")
@@ -192,9 +191,6 @@ class DocumentParser:
             return None
 
         parsed = self.llm.extract_json(response)
-        if not parsed:
-            # Try the utils-level extractor as a fallback
-            parsed = extract_json(response)
 
         if isinstance(parsed, dict) and "table_of_contents" in parsed:
             parsed = parsed["table_of_contents"]
@@ -258,8 +254,6 @@ class DocumentParser:
                 break
 
             parsed = self.llm.extract_json(response)
-            if not parsed:
-                parsed = extract_json(response)
 
             if isinstance(parsed, list) and parsed:
                 parsed = convert_physical_index_to_int(parsed)
@@ -405,8 +399,6 @@ class DocumentParser:
             return [""] * len(nodes)
 
         parsed = self.llm.extract_json(response)
-        if not parsed:
-            parsed = extract_json(response)
 
         if not isinstance(parsed, list):
             raise ValueError("Batch summary response was not a JSON list")

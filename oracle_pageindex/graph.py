@@ -595,7 +595,7 @@ class GraphStore:
         )
         return rows
 
-    def find_entity_paths(self, source_name: str, target_name: str, max_hops: int = 2) -> dict:
+    def find_entity_paths(self, source_name: str, target_name: str) -> dict:
         """Find paths between two entities through intermediate entities (2-hop).
 
         Uses GRAPH_TABLE MATCH to traverse: source -[r1]-> mid -[r2]-> target.

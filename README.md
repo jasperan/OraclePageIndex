@@ -371,13 +371,25 @@ The key grant is `CREATE PROPERTY GRAPH`, which enables Oracle's SQL/PGQ capabil
 
 ### 3. Install & Initialize
 
+The project uses [uv](https://docs.astral.sh/uv/) for dependency management:
+
+```bash
+# Install runtime dependencies (and dev/test extras with --extra dev)
+uv sync
+```
+
+<details>
+<summary><strong>Prefer plain pip?</strong></summary>
+
 ```bash
 pip install oracledb httpx pyyaml tiktoken PyPDF2 PyMuPDF fastapi uvicorn
 ```
 
+</details>
+
 ```bash
 # Initialize the schema (creates tables + Property Graph)
-python run.py init
+uv run python run.py init
 ```
 
 This creates the Oracle Property Graph `doc_knowledge_graph` with:
@@ -604,28 +616,34 @@ entity_resolution:
 
 # Testing
 
-179 unit tests covering all modules. All tests use mocked Oracle and Ollama connections, no running services needed. The system has also been [validated end-to-end](docs/e2e-report.md) against a live Oracle 26ai Free instance with all 33+ graph functions passing.
+198 mocked unit tests covering all modules, plus 10 integration tests gated behind a live Oracle instance. The mocked tests use stubbed Oracle and Ollama connections, so no running services are needed. The system has also been [validated end-to-end](docs/e2e-report.md) against a live Oracle 26ai Free instance with all 33+ graph functions passing.
 
 ```bash
-pytest tests/ -v
+# Mocked suite (no services required)
+uv run pytest tests/ -v -m "not integration"
+
+# Integration suite (requires a live Oracle instance)
+uv run pytest tests/ -v -m integration
 ```
 
 ```
-tests/test_api.py              13 tests  (all FastAPI endpoints)
-tests/test_db.py                3 tests  (connection pool, schema init, close)
+tests/test_api.py              16 tests  (all FastAPI endpoints)
+tests/test_config.py            2 tests  (config dataclass access shapes)
+tests/test_db.py                5 tests  (connection pool, schema init, close)
 tests/test_enricher.py          7 tests  (graph enrichment agent)
-tests/test_entity_extractor.py  3 tests  (entity extraction, relationships)
-tests/test_entity_resolver.py  20 tests  (vector-assisted entity resolution)
-tests/test_graph.py            28 tests  (CRUD + multi-hop traversal + enrichment)
-tests/test_indexer.py           8 tests  (indexing pipeline + resolution wiring)
+tests/test_entity_extractor.py  7 tests  (entity extraction, relationships)
+tests/test_entity_resolver.py  21 tests  (vector-assisted entity resolution)
+tests/test_graph.py            30 tests  (CRUD + multi-hop traversal + enrichment)
+tests/test_graph_integration.py 10 tests  (live Oracle, marked integration)
+tests/test_indexer.py          10 tests  (indexing pipeline + resolution wiring)
 tests/test_intent.py            9 tests  (intent classification)
-tests/test_llm.py               8 tests  (sync/async chat, JSON extraction, embeddings)
+tests/test_llm.py              13 tests  (sync/async chat, JSON extraction, embeddings)
 tests/test_models.py            5 tests  (data classes)
-tests/test_query.py            26 tests  (multi-hop query engine + sessions)
+tests/test_parser.py            6 tests  (PDF parsing + tree building)
+tests/test_query.py            29 tests  (multi-hop query engine + sessions)
 tests/test_schema.py           13 tests  (schema DDL validation)
 tests/test_sessions.py          9 tests  (conversational memory CRUD)
 tests/test_temporal.py         16 tests  (temporal versioning + diffs)
-tests/test_utils.py            11 tests  (config, tokens, tree manipulation)
 ```
 
 ---
@@ -654,7 +672,7 @@ OraclePageIndex/
     index.html          # D3.js app with query bar + timeline slider
     graph.js            # Force-directed graph + traversal path overlay
     style.css           # Dark-theme styling + temporal entity colors
-  tests/                # 179 tests (pytest, fully mocked)
+  tests/                # 198 mocked tests + 10 live-Oracle integration tests (pytest)
   setup_schema.sql      # Oracle DDL: 5 vertex + 8 edge tables + Property Graph
   docker-compose.yml    # Oracle 26ai Free container
   run.py                # CLI entry point

@@ -93,8 +93,7 @@ class QueryEngine:
 
         # Create turn record (after intent classification so we can store the intent)
         try:
-            intent_str = intent.value if hasattr(intent, "value") else str(intent)
-            turn_id = self.graph.create_turn(session_id, turn_number, question, intent_str)
+            turn_id = self.graph.create_turn(session_id, turn_number, question, intent.value)
         except Exception:
             logger.debug("Failed to create turn record", exc_info=True)
 

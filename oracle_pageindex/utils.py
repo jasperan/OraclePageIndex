@@ -9,6 +9,7 @@ import copy
 import json
 import logging
 import os
+import re
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace as config
@@ -50,7 +51,7 @@ class ConfigLoader:
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k
             if isinstance(v, dict):
-                items.update(ConfigLoader._flatten(v, parent_key=k, sep=sep))
+                items.update(ConfigLoader._flatten(v, parent_key=new_key, sep=sep))
             else:
                 items[new_key] = v
         return items
@@ -215,12 +216,6 @@ def get_pdf_name(pdf_path) -> str:
     return "Untitled"
 
 
-def get_number_of_pages(pdf_path) -> int:
-    """Return the total page count of a PDF."""
-    pdf_reader = PyPDF2.PdfReader(pdf_path)
-    return len(pdf_reader.pages)
-
-
 # ---------------------------------------------------------------------------
 # Tree / structure helpers
 # ---------------------------------------------------------------------------
@@ -242,26 +237,6 @@ def write_node_id(data, node_id: int = 0) -> int:
         for item in data:
             node_id = write_node_id(item, node_id)
     return node_id
-
-
-def get_nodes(structure):
-    """Flatten a tree into a list of nodes **without** their ``nodes``
-    children key (deep‑copied).
-    """
-    if isinstance(structure, dict):
-        node = copy.deepcopy(structure)
-        node.pop("nodes", None)
-        nodes = [node]
-        for key in list(structure.keys()):
-            if "nodes" in key:
-                nodes.extend(get_nodes(structure[key]))
-        return nodes
-    elif isinstance(structure, list):
-        nodes = []
-        for item in structure:
-            nodes.extend(get_nodes(item))
-        return nodes
-    return []
 
 
 def structure_to_list(structure):
@@ -395,7 +370,7 @@ def extract_json(content: str):
         else:
             json_content = content.strip()
 
-        json_content = json_content.replace("None", "null")
+        json_content = re.sub(r"\bNone\b", "null", json_content)
         json_content = json_content.replace(",]", "]").replace(",}", "}")
         return json.loads(json_content)
     except json.JSONDecodeError:

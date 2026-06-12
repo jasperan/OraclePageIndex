@@ -11,6 +11,7 @@ work on the D3.js visualization without a live database.
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
 
@@ -121,6 +122,24 @@ def _init_backend():
 
 
 # ---------------------------------------------------------------------------
+# Lifecycle
+# ---------------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Initialise the backend on startup and tear it down on shutdown."""
+    _init_backend()
+    yield
+    if db is not None:
+        try:
+            db.close()
+            logger.info("Oracle connection pool closed")
+        except Exception:
+            logger.exception("Error closing Oracle connection pool")
+
+
+# ---------------------------------------------------------------------------
 # FastAPI application
 # ---------------------------------------------------------------------------
 
@@ -128,6 +147,7 @@ app = FastAPI(
     title="OraclePageIndex API",
     description="Graph data and natural-language query API for OraclePageIndex",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # CORS -- allow the D3.js frontend (or any origin during development)
@@ -138,26 +158,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# ---------------------------------------------------------------------------
-# Lifecycle events
-# ---------------------------------------------------------------------------
-
-
-@app.on_event("startup")
-async def on_startup():
-    _init_backend()
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    if db is not None:
-        try:
-            db.close()
-            logger.info("Oracle connection pool closed")
-        except Exception:
-            logger.exception("Error closing Oracle connection pool")
 
 
 # ---------------------------------------------------------------------------
