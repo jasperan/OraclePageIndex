@@ -117,7 +117,6 @@ def toc_detector_single_page(content, model=None):
     Please note: abstract,summary, notation list, figure list, table list, etc. are not table of contents."""
 
     response = ChatGPT_API(model=model, prompt=prompt)
-    # print('response', response)
     json_content = extract_json(response)    
     return json_content['toc_detected']
 
