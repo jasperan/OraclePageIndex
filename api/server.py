@@ -11,6 +11,7 @@ work on the D3.js visualization without a live database.
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
@@ -150,11 +151,23 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS -- allow the D3.js frontend (or any origin during development)
+# CORS -- the UI is served by this same app (mounted at / and /viz), so no cross-origin access is
+# needed. A wildcard origin combined with allow_credentials=True made Starlette echo whichever Origin
+# the caller sent, which let any website the user visits read the indexed document content from this
+# unauthenticated API. Add extra origins via ORACLE_PAGEINDEX_CORS_ORIGINS if a separate dev server
+# is used.
+_cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "ORACLE_PAGEINDEX_CORS_ORIGINS",
+        "http://localhost:8000,http://127.0.0.1:8000",
+    ).split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
