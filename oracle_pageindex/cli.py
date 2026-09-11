@@ -12,6 +12,7 @@ All subcommands accept optional ``--model`` and ``--oracle-dsn`` overrides.
 
 import argparse
 import logging
+import os
 import sys
 
 from oracle_pageindex.db import OracleDB
@@ -171,7 +172,10 @@ def cmd_serve(args):
     host = getattr(args, "host", "127.0.0.1")
     port = getattr(args, "port", 8000)
     print(f"Starting server on {host}:{port} ...")
-    uvicorn.run("api.server:app", host=host, port=port, reload=True)
+    # Reload watches the source tree and restarts the process; it is a development convenience, and
+    # this command is the documented way to serve the UI. Opt in with ORACLE_PAGEINDEX_RELOAD=1.
+    reload = os.environ.get("ORACLE_PAGEINDEX_RELOAD", "") == "1"
+    uvicorn.run("api.server:app", host=host, port=port, reload=reload)
 
 
 # ---------------------------------------------------------------------------
