@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OraclePageIndex - Knowledge Graph</title>
+    <meta name="color-scheme" content="dark">
+    <title>OraclePageIndex — knowledge graph</title>
     <link rel="stylesheet" href="/viz/style.css">
 </head>
 <body>
@@ -11,41 +12,48 @@
     <header id="header">
         <div class="header-title">
             <h1>OraclePageIndex</h1>
-            <span class="subtitle">Oracle AI Database Knowledge Graph</span>
+            <span class="subtitle">Oracle AI Database knowledge graph</span>
         </div>
         <div class="header-controls">
-            <input type="text" id="search-input" placeholder="Search nodes..." autocomplete="off">
-            <select id="layout-toggle">
-                <option value="force">Force Layout</option>
-                <option value="tree">Tree Layout</option>
+            <input class="control" type="text" id="search-input" placeholder="Search" autocomplete="off" aria-label="Search nodes">
+            <select class="control" id="layout-toggle" aria-label="Layout">
+                <option value="force">Force layout</option>
+                <option value="tree">Tree layout</option>
             </select>
-            <button id="reset-btn">Reset</button>
+            <button class="btn" id="reset-btn">Reset</button>
         </div>
     </header>
 
-    <!-- Legend -->
-    <div id="legend">
-        <div class="legend-item">
-            <span class="legend-dot" style="background: #58a6ff;"></span>
-            <span class="legend-label">Document</span>
+    <!-- Left rail: legend and counts read as one column of chrome -->
+    <div id="left-rail">
+        <div id="legend" class="panel" aria-label="Node types">
+            <span class="legend-item">
+                <span class="legend-swatch legend-swatch--document"></span>
+                <span class="legend-label">Document</span>
+            </span>
+            <span class="legend-item">
+                <span class="legend-swatch legend-swatch--section"></span>
+                <span class="legend-label">Section</span>
+            </span>
+            <span class="legend-item">
+                <span class="legend-swatch legend-swatch--entity"></span>
+                <span class="legend-label">Entity</span>
+            </span>
         </div>
-        <div class="legend-item">
-            <span class="legend-dot" style="background: #3fb950;"></span>
-            <span class="legend-label">Section</span>
-        </div>
-        <div class="legend-item">
-            <span class="legend-dot" style="background: #d29922;"></span>
-            <span class="legend-label">Entity</span>
+
+        <!-- Stats bar -->
+        <div id="stats-bar" class="panel">
+            <span id="stats-text"></span>
         </div>
     </div>
 
     <!-- Timeline Controls -->
-    <div id="timeline-controls" style="display:none; position:fixed; top:calc(var(--header-height, 56px) + 12px); left:50%; transform:translateX(-50%); z-index:95; padding:8px 16px; background:rgba(22,27,34,0.85); backdrop-filter:blur(8px); border:1px solid #30363d; border-radius:8px; align-items:center; gap:12px;">
-        <label style="color:#8b949e; font-size:12px;">Version:</label>
-        <input type="range" id="version-slider" min="1" max="1" value="1" style="width:200px; accent-color:#58a6ff;">
-        <span id="version-label" style="color:#e6edf3; font-size:13px; min-width:24px;">v1</span>
-        <select id="doc-group-select" style="padding:4px 8px; background:#0d1117; border:1px solid #30363d; border-radius:6px; color:#e6edf3; font-size:12px;">
-            <option value="">All Documents</option>
+    <div id="timeline-controls" class="panel">
+        <label class="timeline-label" for="version-slider">Version</label>
+        <input type="range" id="version-slider" min="1" max="1" value="1">
+        <span id="version-label" class="timeline-value">v1</span>
+        <select class="control control--small" id="doc-group-select" aria-label="Document group">
+            <option value="">All documents</option>
         </select>
     </div>
 
@@ -53,26 +61,30 @@
     <svg id="graph-svg"></svg>
 
     <!-- Details Panel -->
-    <aside id="details-panel" class="hidden">
-        <button id="details-close" aria-label="Close details">&times;</button>
+    <aside id="details-panel" class="hidden" aria-label="Node details">
+        <button id="details-close" aria-label="Close details">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+                <path d="M4 4l8 8M12 4l-8 8"/>
+            </svg>
+        </button>
         <h2 id="detail-label"></h2>
         <div class="detail-row">
             <span class="detail-key">Type</span>
             <span id="detail-type" class="detail-value badge"></span>
         </div>
-        <div class="detail-row" id="detail-entity-type-row" style="display:none;">
-            <span class="detail-key">Entity Type</span>
+        <div class="detail-row" id="detail-entity-type-row">
+            <span class="detail-key">Entity type</span>
             <span id="detail-entity-type" class="detail-value"></span>
         </div>
-        <div class="detail-row" id="detail-node-id-row" style="display:none;">
+        <div class="detail-row" id="detail-node-id-row">
             <span class="detail-key">Node ID</span>
             <span id="detail-node-id" class="detail-value mono"></span>
         </div>
-        <div class="detail-section" id="detail-summary-section" style="display:none;">
+        <div class="detail-section" id="detail-summary-section">
             <h3>Summary</h3>
             <p id="detail-summary"></p>
         </div>
-        <div class="detail-section" id="detail-description-section" style="display:none;">
+        <div class="detail-section" id="detail-description-section">
             <h3>Description</h3>
             <p id="detail-description"></p>
         </div>
@@ -82,26 +94,21 @@
         </div>
     </aside>
 
-    <!-- Stats bar -->
-    <div id="stats-bar">
-        <span id="stats-text"></span>
-    </div>
-
     <!-- Query Interface -->
-    <div id="query-interface" style="position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:1000; display:flex; gap:8px; background:#161b22; padding:12px 16px; border-radius:12px; border:1px solid #30363d; box-shadow:0 4px 12px rgba(0,0,0,0.4);">
-        <input type="text" id="query-input" placeholder="Ask a question..." style="width:400px; padding:8px 12px; background:#0d1117; border:1px solid #30363d; border-radius:8px; color:#e6edf3; font-size:14px;">
-        <button id="query-btn" style="padding:8px 16px; background:#238636; border:none; border-radius:8px; color:#fff; cursor:pointer; font-size:14px;">Query</button>
-        <button id="clear-path-btn" style="padding:8px 16px; background:#30363d; border:none; border-radius:8px; color:#e6edf3; cursor:pointer; font-size:14px; display:none;">Show Full Graph</button>
-        <button id="replay-btn" style="padding:8px 16px; background:#30363d; border:none; border-radius:8px; color:#e6edf3; cursor:pointer; font-size:14px; display:none;">Replay</button>
+    <div id="query-interface">
+        <input class="control" type="text" id="query-input" placeholder="Ask" aria-label="Ask a question">
+        <button class="btn btn--primary" id="query-btn">Query</button>
+        <button class="btn" id="clear-path-btn">Show full graph</button>
+        <button class="btn" id="replay-btn">Replay</button>
     </div>
 
     <!-- Traversal Panel (shows SQL queries) -->
-    <div id="traversal-panel" style="display:none; position:fixed; right:20px; top:80px; width:380px; max-height:calc(100vh - 160px); overflow-y:auto; background:#161b22; border:1px solid #30363d; border-radius:12px; padding:16px; z-index:999;">
-        <h3 style="margin:0 0 12px; color:#e6edf3; font-size:14px;">Query Traversal</h3>
+    <div id="traversal-panel" aria-label="Query traversal">
+        <h3 class="panel-heading">Traversal</h3>
         <div id="traversal-steps"></div>
-        <h3 style="margin:16px 0 8px; color:#e6edf3; font-size:14px;">SQL/PGQ Queries</h3>
+        <h3 class="panel-heading panel-heading--spaced">SQL/PGQ</h3>
         <div id="query-sql-list"></div>
-        <div id="query-answer" style="margin-top:12px; padding:12px; background:#0d1117; border-radius:8px; color:#8b949e; font-size:13px; display:none;"></div>
+        <div id="query-answer"></div>
     </div>
 
     <script src="https://d3js.org/d3.v7.min.js"></script>
