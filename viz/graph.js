@@ -10,12 +10,6 @@
     // ---------------------------------------------------------------
     // Constants
     // ---------------------------------------------------------------
-    const NODE_COLORS = {
-        document: "#58a6ff",
-        section:  "#3fb950",
-        entity:   "#d29922",
-    };
-
     const NODE_RADIUS = {
         document: 16,
         section:  10,
@@ -23,6 +17,37 @@
     };
 
     const LABEL_MAX = 25;
+
+    // The palette lives in style.css; read it back once so node, edge
+    // and ledger colours never drift into a second copy of the ramp.
+    const PALETTE_VARS = {
+        tint1:  "--tint-1",
+        tint2:  "--tint-2",
+        tint3:  "--tint-3",
+        muted:  "--text-3",
+        lamp:   "--lamp",
+    };
+
+    const PALETTE = {};
+
+    function readPalette() {
+        const styles = getComputedStyle(document.documentElement);
+        Object.keys(PALETTE_VARS).forEach(function (key) {
+            PALETTE[key] = styles.getPropertyValue(PALETTE_VARS[key]).trim();
+        });
+    }
+
+    // Node type -> one step of the single node hue.
+    const TYPE_TINT = {
+        document: "tint1",
+        section:  "tint2",
+        entity:   "tint3",
+    };
+
+    function headerHeight() {
+        const header = document.getElementById("header");
+        return header ? header.offsetHeight : 56;
+    }
 
     // Demo data used when the API is unavailable (local dev without Oracle)
     const DEMO_DATA = {
@@ -68,6 +93,7 @@
     // Boot
     // ---------------------------------------------------------------
     async function init() {
+        readPalette();
         graphData = await fetchGraphData();
         updateStats();
         buildGraph();
@@ -104,8 +130,17 @@
         const docs = graphData.nodes.filter(d => d.type === "document").length;
         const secs = graphData.nodes.filter(d => d.type === "section").length;
         const ents = graphData.nodes.filter(d => d.type === "entity").length;
-        statsText.textContent =
-            `${n} nodes (${docs} docs, ${secs} sections, ${ents} entities) \u00B7 ${e} edges`;
+        statsText.textContent = [
+            count(n, "node", "nodes"),
+            count(docs, "document", "documents"),
+            count(secs, "section", "sections"),
+            count(ents, "entity", "entities"),
+            count(e, "edge", "edges"),
+        ].join(" \u00B7 ");
+    }
+
+    function count(n, singular, plural) {
+        return `${n} ${n === 1 ? singular : plural}`;
     }
 
     // ---------------------------------------------------------------
@@ -115,7 +150,7 @@
         svg.selectAll("*").remove();
 
         const width  = window.innerWidth;
-        const height = window.innerHeight - 56; // minus header
+        const height = window.innerHeight - headerHeight();
 
         svg.attr("viewBox", [0, 0, width, height]);
 
@@ -186,17 +221,62 @@
         simulation = d3.forceSimulation(graphData.nodes)
             .force("link", d3.forceLink(graphData.edges)
                 .id(d => d.id)
-                .distance(80))
-            .force("charge", d3.forceManyBody().strength(-200))
+                .distance(110))
+            .force("charge", d3.forceManyBody().strength(-320))
             .force("center", d3.forceCenter(width / 2, height / 2))
-            .force("collide", d3.forceCollide().radius(d => (NODE_RADIUS[d.type] || 8) + 6))
+            .force("collide", d3.forceCollide().radius(d => (NODE_RADIUS[d.type] || 8) + 14))
             .on("tick", ticked);
+
+        // Settle before the first paint so the graph opens framed, not
+        // drifting in from an arbitrary corner of the canvas.
+        simulation.stop();
+        const warmup = graphData.nodes.length > 800 ? 160 : 300;
+        for (let i = 0; i < warmup; i++) simulation.tick();
+        ticked();
+        fitToBounds(0);
 
         // Background click resets
         svg.on("click", onBackgroundClick);
 
         // Handle window resize
         window.addEventListener("resize", onResize);
+    }
+
+    // ---------------------------------------------------------------
+    // Fit the drawing to the canvas
+    // ---------------------------------------------------------------
+    function fitToBounds(duration) {
+        if (!nodeSel || graphData.nodes.length === 0) return;
+
+        const width  = window.innerWidth;
+        const height = window.innerHeight - headerHeight();
+        const pad = 64;
+
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        graphData.nodes.forEach(n => {
+            const r = NODE_RADIUS[n.type] || 8;
+            x0 = Math.min(x0, n.x - r); x1 = Math.max(x1, n.x + r);
+            y0 = Math.min(y0, n.y - r); y1 = Math.max(y1, n.y + r);
+        });
+
+        const dx = Math.max(x1 - x0, 1);
+        const dy = Math.max(y1 - y0, 1);
+        // Never blow the nodes and labels past their designed size.
+        const k = Math.min(1.2, Math.max(0.15, Math.min(
+            (width - pad * 2) / dx,
+            (height - pad * 2) / dy
+        )));
+
+        const transform = d3.zoomIdentity
+            .translate(width / 2, height / 2)
+            .scale(k)
+            .translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
+
+        if (duration > 0) {
+            svg.transition().duration(duration).call(svg.__zoom_behavior.transform, transform);
+        } else {
+            svg.call(svg.__zoom_behavior.transform, transform);
+        }
     }
 
     function ticked() {
@@ -299,52 +379,43 @@
         document.getElementById("detail-label").textContent = d.label;
 
         const typeBadge = document.getElementById("detail-type");
-        typeBadge.textContent = d.type;
+        typeBadge.textContent = d.type.charAt(0).toUpperCase() + d.type.slice(1);
         typeBadge.className = `detail-value badge ${d.type}`;
 
         // Entity type
         const entityRow = document.getElementById("detail-entity-type-row");
         if (d.entity_type) {
             document.getElementById("detail-entity-type").textContent = d.entity_type;
-            entityRow.style.display = "";
-        } else {
-            entityRow.style.display = "none";
         }
+        entityRow.classList.toggle("is-hidden", !d.entity_type);
 
         // Node ID
         const nodeIdRow = document.getElementById("detail-node-id-row");
         if (d.node_id) {
             document.getElementById("detail-node-id").textContent = d.node_id;
-            nodeIdRow.style.display = "";
-        } else {
-            nodeIdRow.style.display = "none";
         }
+        nodeIdRow.classList.toggle("is-hidden", !d.node_id);
 
         // Summary
         const summarySection = document.getElementById("detail-summary-section");
         if (d.summary) {
             document.getElementById("detail-summary").textContent = d.summary;
-            summarySection.style.display = "";
-        } else {
-            summarySection.style.display = "none";
         }
+        summarySection.classList.toggle("is-hidden", !d.summary);
 
         // Description
         const descSection = document.getElementById("detail-description-section");
         if (d.description) {
             document.getElementById("detail-description").textContent = d.description;
-            descSection.style.display = "";
-        } else {
-            descSection.style.display = "none";
         }
+        descSection.classList.toggle("is-hidden", !d.description);
 
         // Connections list
         const connList = document.getElementById("detail-connections");
         connList.replaceChildren();
-        if (connections.length === 0) {
-            document.getElementById("detail-connections-section").style.display = "none";
-        } else {
-            document.getElementById("detail-connections-section").style.display = "";
+        document.getElementById("detail-connections-section")
+            .classList.toggle("is-hidden", connections.length === 0);
+        if (connections.length > 0) {
             connections.forEach(c => {
                 const li = document.createElement("li");
                 const arrow = c.direction === "outgoing" ? "\u2192" : "\u2190";
@@ -363,10 +434,12 @@
         }
 
         detailsPanel.classList.remove("hidden");
+        document.body.classList.add("details-open");
     }
 
     function hideDetails() {
         detailsPanel.classList.add("hidden");
+        document.body.classList.remove("details-open");
         selectedNode = null;
     }
 
@@ -421,7 +494,7 @@
         currentLayout = layout;
 
         const width  = window.innerWidth;
-        const height = window.innerHeight - 56;
+        const height = window.innerHeight - headerHeight();
 
         if (layout === "tree") {
             // Arrange nodes in a radial-ish tree by type
@@ -453,6 +526,9 @@
             });
             simulation.alpha(0.8).restart();
         }
+
+        // Re-frame once the new layout has come to rest.
+        simulation.on("end", () => fitToBounds(240));
     }
 
     function arrangeCircle(nodes, cx, cy, radius) {
@@ -476,19 +552,14 @@
         // Hide details
         hideDetails();
 
-        // Reset zoom
-        const width  = window.innerWidth;
-        const height = window.innerHeight - 56;
-        svg.transition().duration(500).call(
-            svg.__zoom_behavior.transform,
-            d3.zoomIdentity
-        );
-
         // Reset layout to force
         if (currentLayout !== "force") {
             layoutToggle.value = "force";
             switchLayout("force");
         }
+
+        // Frame the whole graph again
+        fitToBounds(240);
     }
 
     // ---------------------------------------------------------------
@@ -496,13 +567,15 @@
     // ---------------------------------------------------------------
     function onResize() {
         const width  = window.innerWidth;
-        const height = window.innerHeight - 56;
+        const height = window.innerHeight - headerHeight();
         svg.attr("viewBox", [0, 0, width, height]);
 
         if (simulation) {
             simulation.force("center", d3.forceCenter(width / 2, height / 2));
             simulation.alpha(0.3).restart();
         }
+
+        fitToBounds(0);
     }
 
     // ---------------------------------------------------------------
@@ -663,11 +736,10 @@
 
     function getEdgeColor(type) {
         switch (type) {
-            case "parent_of":  return "#3fb950";
-            case "contains":   return "#58a6ff";
-            case "mentions":   return "#d29922";
-            case "related_to": return "#bc8cff";
-            default:           return "#6e7681";
+            case "parent_of":  return PALETTE.tint2;
+            case "contains":   return PALETTE.tint1;
+            case "mentions":   return PALETTE.tint3;
+            default:           return PALETTE.muted;
         }
     }
 
@@ -721,20 +793,17 @@
             nodeSel.each(function (d) {
                 if (d.id === nodeId) {
                     g.append("circle")
-                        .attr("class", "step-badge")
-                        .attr("cx", d.x - 12)
-                        .attr("cy", d.y - 12)
-                        .attr("r", 8)
-                        .attr("fill", "#238636");
+                        .attr("class", "step-badge step-badge--dot")
+                        .attr("cx", d.x - 13)
+                        .attr("cy", d.y - 13)
+                        .attr("r", 8);
 
                     g.append("text")
-                        .attr("class", "step-badge")
-                        .attr("x", d.x - 12)
-                        .attr("y", d.y - 8)
+                        .attr("class", "step-badge step-badge--text")
+                        .attr("x", d.x - 13)
+                        .attr("y", d.y - 13)
+                        .attr("dy", "0.35em")
                         .attr("text-anchor", "middle")
-                        .attr("fill", "#fff")
-                        .attr("font-size", "10px")
-                        .attr("font-weight", "bold")
                         .text(step.step_number);
                 }
             });
@@ -764,14 +833,7 @@
                     if (d.id === nodeId) {
                         d3.select(this)
                             .classed("dimmed", false)
-                            .classed("path-node", true)
-                            .select("circle")
-                            .transition()
-                            .duration(200)
-                            .attr("r", function () { return +d3.select(this).attr("r") + 4; })
-                            .transition()
-                            .duration(200)
-                            .attr("r", function () { return +d3.select(this).attr("r") - 4; });
+                            .classed("path-node", true);
                     }
                 });
 
@@ -781,7 +843,7 @@
                     document.getElementById("clear-path-btn").style.display = "inline-block";
                     document.getElementById("replay-btn").style.display = "inline-block";
                 }
-            }, i * 400);
+            }, i * 120);
         });
     }
 
@@ -790,47 +852,47 @@
         var stepsDiv = document.getElementById("traversal-steps");
         var sqlDiv = document.getElementById("query-sql-list");
 
-        // Render steps
+        // Render steps as a ledger: one row height, number in the gutter.
         stepsDiv.replaceChildren(...traversalPath.map(function (step) {
-            var borderColor = step.node_type === "entity" ? "#d29922" :
-                              step.node_type === "section" ? "#3fb950" : "#58a6ff";
             var row = document.createElement("div");
-            row.style.padding = "6px 8px";
-            row.style.margin = "4px 0";
-            row.style.background = "#0d1117";
-            row.style.borderRadius = "6px";
-            row.style.borderLeft = "3px solid " + borderColor;
+            row.className = "traversal-step";
+            row.style.setProperty("--step-tint", PALETTE[TYPE_TINT[step.node_type]] || PALETTE.muted);
 
             var stepNumber = document.createElement("span");
-            stepNumber.style.color = "#8b949e";
-            stepNumber.style.fontSize = "11px";
-            stepNumber.textContent = step.step_number + ".";
-            row.appendChild(stepNumber);
-            row.appendChild(document.createTextNode(" "));
+            stepNumber.className = "ts-num";
+            stepNumber.textContent = step.step_number;
 
-            var label = document.createElement("span");
-            label.style.color = "#e6edf3";
-            label.style.fontSize = "12px";
-            label.textContent = "[" + step.node_type + "] " + step.node_label;
-            row.appendChild(label);
+            var body = document.createElement("div");
+            body.className = "ts-body";
+
+            var label = document.createElement("div");
+            label.className = "ts-label";
+
+            var type = document.createElement("span");
+            type.className = "ts-type";
+            type.textContent = step.node_type;
+            label.appendChild(type);
+            label.appendChild(document.createTextNode(step.node_label));
+            body.appendChild(label);
 
             if (step.edge_label) {
-                var edgeInfo = document.createElement("span");
-                edgeInfo.style.color = "#8b949e";
-                edgeInfo.style.fontSize = "11px";
-                edgeInfo.textContent = " " +
+                var edgeInfo = document.createElement("div");
+                edgeInfo.className = "ts-edge";
+                edgeInfo.textContent =
                     (step.edge_direction === "reverse" ? "\u2190" : "\u2192") +
                     " " + step.edge_label;
-                row.appendChild(edgeInfo);
+                body.appendChild(edgeInfo);
             }
 
-            var reason = document.createElement("div");
-            reason.style.color = "#8b949e";
-            reason.style.fontSize = "11px";
-            reason.style.marginTop = "2px";
-            reason.textContent = step.reason || "";
-            row.appendChild(reason);
+            if (step.reason) {
+                var reason = document.createElement("div");
+                reason.className = "ts-reason";
+                reason.textContent = step.reason;
+                body.appendChild(reason);
+            }
 
+            row.appendChild(stepNumber);
+            row.appendChild(body);
             return row;
         }));
 
@@ -839,40 +901,28 @@
             sqlDiv.replaceChildren(...graphQueries.map(function (gq) {
                 var ms = typeof gq.execution_ms === "number" ? gq.execution_ms.toFixed(1) : "?";
                 var item = document.createElement("div");
-                item.style.padding = "8px";
-                item.style.margin = "4px 0";
-                item.style.background = "#0d1117";
-                item.style.borderRadius = "6px";
+                item.className = "sql-item";
 
                 var purpose = document.createElement("div");
-                purpose.style.color = "#58a6ff";
-                purpose.style.fontSize = "12px";
-                purpose.style.marginBottom = "4px";
+                purpose.className = "sql-purpose";
                 purpose.textContent = gq.purpose || "";
                 item.appendChild(purpose);
 
                 var sql = document.createElement("pre");
-                sql.style.color = "#8b949e";
-                sql.style.fontSize = "11px";
-                sql.style.margin = "0";
-                sql.style.whiteSpace = "pre-wrap";
-                sql.style.wordBreak = "break-all";
+                sql.className = "sql-code";
                 sql.textContent = gq.sql || "";
                 item.appendChild(sql);
 
                 var timing = document.createElement("div");
-                timing.style.color = "#3fb950";
-                timing.style.fontSize = "11px";
-                timing.style.marginTop = "4px";
-                timing.textContent = (gq.rows_returned || 0) + " rows in " + ms + "ms";
+                timing.className = "sql-timing";
+                timing.textContent = (gq.rows_returned || 0) + " rows in " + ms + " ms";
                 item.appendChild(timing);
 
                 return item;
             }));
         } else {
             var empty = document.createElement("div");
-            empty.style.color = "#8b949e";
-            empty.style.fontSize = "12px";
+            empty.className = "sql-empty";
             empty.textContent = "No graph queries recorded";
             sqlDiv.replaceChildren(empty);
         }
@@ -898,7 +948,7 @@
         if (!question) return;
 
         var btn = document.getElementById("query-btn");
-        btn.textContent = "Thinking...";
+        btn.textContent = "Querying";
         btn.disabled = true;
 
         try {
