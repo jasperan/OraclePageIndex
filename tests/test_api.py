@@ -30,7 +30,7 @@ def client(mock_graph, mock_query_engine):
          patch("api.server.query_engine", mock_query_engine):
         from api.server import app
         from fastapi.testclient import TestClient
-        yield TestClient(app, raise_server_exceptions=False)
+        yield TestClient(app, raise_server_exceptions=False, base_url="http://localhost:8000")
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def client_no_backend():
          patch("api.server.query_engine", None):
         from api.server import app
         from fastapi.testclient import TestClient
-        yield TestClient(app, raise_server_exceptions=False)
+        yield TestClient(app, raise_server_exceptions=False, base_url="http://localhost:8000")
 
 
 # ---------------------------------------------------------------------------
@@ -237,3 +237,31 @@ def test_related_entities_endpoint(client, mock_graph):
     assert resp.status_code == 200
     assert resp.json()[0]["name"] == "Google"
     mock_graph.get_related_entities.assert_called_once_with("Apple")
+
+
+# ---------------------------------------------------------------------------
+# Cross-site / rebinding protection
+# ---------------------------------------------------------------------------
+
+def test_cross_origin_query_is_refused_before_execution(client, mock_query_engine):
+    resp = client.get("/api/query", params={"q": "x"}, headers={"Origin": "http://attacker.example"})
+    assert resp.status_code == 403
+    mock_query_engine.query.assert_not_called()
+
+
+def test_cross_site_fetch_metadata_is_refused(client, mock_query_engine):
+    resp = client.get("/api/query", params={"q": "x"}, headers={"Sec-Fetch-Site": "cross-site"})
+    assert resp.status_code == 403
+    mock_query_engine.query.assert_not_called()
+
+
+def test_allowlisted_origin_and_same_origin_are_served(client, mock_graph):
+    mock_graph.get_all_documents.return_value = []
+    assert client.get("/api/documents", headers={"Origin": "http://localhost:8000"}).status_code == 200
+    assert client.get("/api/documents", headers={"Sec-Fetch-Site": "same-origin"}).status_code == 200
+
+
+def test_foreign_host_header_is_refused(client, mock_graph):
+    resp = client.get("/api/graph", headers={"Host": "rebind.attacker.test"})
+    assert resp.status_code == 400
+    mock_graph.get_full_graph_data.assert_not_called()

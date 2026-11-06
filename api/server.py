@@ -18,7 +18,8 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from oracle_pageindex.db import OracleDB
@@ -171,6 +172,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def refuse_cross_site_api_requests(request, call_next):
+    """Refuse browser-originated cross-site calls to /api before they execute.
+
+    CORS only stops a foreign page from *reading* a response; a simple GET such as /api/query has
+    already created session rows and spent model time by then. Browsers label such requests with
+    ``Origin`` and/or ``Sec-Fetch-Site``; the served UI is same-origin, and non-browser clients
+    (curl, tests) send neither header.
+    """
+    if request.url.path.startswith("/api/"):
+        origin = request.headers.get("origin")
+        site = request.headers.get("sec-fetch-site")
+        if (origin is not None and origin not in _cors_origins) or (
+            site in ("cross-site", "same-site") and origin not in _cors_origins
+        ):
+            return JSONResponse({"detail": "Cross-origin request refused"}, status_code=403)
+    return await call_next(request)
+
+
+# The API is unauthenticated and bound to loopback, so a DNS-rebinding page (attacker hostname
+# resolving to 127.0.0.1) would be same-origin to the browser and could read everything. Only answer
+# requests addressed to a known local hostname; extend via ORACLE_PAGEINDEX_ALLOWED_HOSTS.
+_allowed_hosts = [
+    host.strip()
+    for host in os.getenv("ORACLE_PAGEINDEX_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if host.strip()
+]
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
 
 
 # ---------------------------------------------------------------------------
